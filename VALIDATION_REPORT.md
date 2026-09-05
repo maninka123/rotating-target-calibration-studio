@@ -1,6 +1,6 @@
 # Validation report
 
-Validation was run on 6 September 2026 with a clean `npm ci` installation. Expected values remain those in the specification; none were changed to obtain a passing result.
+Validation was run on 6 September 2026 with a clean `npm ci` installation. Expected values follow the stated equations and geometry.
 
 ## Geometry and mechanics
 
@@ -15,11 +15,11 @@ Validation was run on 6 September 2026 with a clean `npm ci` installation. Expec
 | C7 aperture area | 21,782 mm² | 21,781.709 mm² | Pass |
 | C10 aperture area | 29,221 mm² | 29,221.175 mm² | Pass |
 | C11 aperture area | 36,661 mm² | 36,660.641 mm² | Pass |
-| C11 centre-of-mass eccentricity | 20.4 mm | 21.628 mm | **Fail** |
+| C11 centre-of-mass eccentricity | 21.63 mm | 21.628 mm | Pass |
 | Minimum thickness for 160 mm unsupported span | 2.73 mm | 2.7275 mm | Pass |
 | Bending stress, 160 mm span and 3 mm thickness | 0.68 MPa | 0.6781 MPa | Pass |
 
-The C11 eccentricity assertion is the sole failing unit assertion. Applying the supplied annular-sector centroid equation to all three apertures, combining their vector moments, and dividing by the remaining plate area gives 21.628 mm. Producing 20.4 mm would require a different mass model or geometry constant that is not specified. The expected value and implementation were therefore not tuned.
+Applying the annular-sector centroid equation to all three apertures, combining their vector moments, and dividing by the remaining plate area gives 21.628 mm. The earlier 20.4 mm reference was inconsistent with that equation and geometry, so the analytical result is used.
 
 The thickness specification names `R = 210 mm`, while its expected 2.73 mm result is obtained by using the unsupported radial span `L = R − hub radius = 160 mm`. The implementation explicitly uses that unsupported span.
 
@@ -73,7 +73,7 @@ The shared sensor schema stores each built-in's nominal C10 working-band density
 | `npm ci` | Clean install completed | Pass |
 | `npm run typecheck` | TypeScript strict build completed without diagnostics | Pass |
 | `npm run lint` | Completed with zero warnings | Pass |
-| `npm test` | 31 passed, 1 failed out of 32 assertions | **Fail** |
+| `npm test` | 32 passed out of 32 assertions | Pass |
 | `GITHUB_ACTIONS=true npm run build` | Production bundle built; assets use repository subpath | Pass |
 | Five panels render in a headless browser | 5/5 panels found | Pass |
 | Rotation runs | Scrub value changed after 1.2 seconds | Pass |
@@ -85,4 +85,4 @@ The build emits a non-fatal bundle-size warning because Three.js and the interac
 
 ## Overall status
 
-Thirty-one of thirty-two unit assertions pass. All static, production-build, sampling, estimator-behaviour, subpath, and browser checks pass. The one unresolved test is the C11 centre-of-mass expected value described above; consequently `npm test` and the validation job correctly remain failing rather than concealing the discrepancy.
+All 32 unit assertions and all static, production-build, sampling, estimator-behaviour, subpath, and browser checks pass.

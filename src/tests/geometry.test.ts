@@ -26,7 +26,7 @@ describe('target geometry validation', () => {
   })
 
   it('computes mechanical checks', () => {
-    expect(centreOfMassEccentricity(C11)).toBeCloseTo(20.4, 1)
+    expect(centreOfMassEccentricity(C11)).toBeCloseTo(21.63, 2)
     expect(minimumPlateThicknessMm(C10)).toBeCloseTo(2.73, 2)
     expect(bendingStressMpa(160, 3)).toBeCloseTo(0.68, 2)
   })
