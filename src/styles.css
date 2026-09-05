@@ -42,7 +42,9 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .panel-actions { display: flex; align-items: center; padding-right: .7rem; }
 .panel-body { padding: 14px; animation: reveal .18s ease-out; }
 @keyframes reveal { from { opacity: 0; transform: translateY(-2px); } }
-.scene-panel, .results-panel { grid-column: 1 / -1; }
+.scene-panel { grid-column: 1; }
+.rotation-panel { grid-column: 2; }
+.results-panel { grid-column: 1 / -1; }
 .views-panel { grid-column: 1 / -1; }
 
 .preset-row { display: flex; gap: 6px; margin-bottom: 12px; }
@@ -85,6 +87,10 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .builder-summary { color: var(--accent); font-size: .78rem; }
 
 .scene-wrap { position: relative; width: 100%; height: 460px; background: #1d2427; }
+.rotation-wrap { position: relative; width: 100%; height: 460px; background: #f2f5f5; }
+.rotation-wrap > svg { display: block; width: 100%; height: 100%; }
+.rotation-target-svg { transition: transform .12s linear; transform-box: view-box; }
+.rotation-angle { position: absolute; left: 10px; bottom: 10px; background: rgba(255,255,255,.9); border: 1px solid #c7d1d3; padding: 4px 7px; font-size: .72rem; }
 .scene-label { display: block; white-space: nowrap; color: #e8eeee; background: rgba(27, 34, 37, .82); border-left: 2px solid #56a1aa; padding: 3px 5px; font-size: 10px; pointer-events: none; }
 .scene-labels { position: absolute; left: 10px; top: 10px; display: grid; gap: 4px; pointer-events: none; }
 .scene-labels span { color: #e8eeee; background: rgba(27, 34, 37, .82); border-left: 2px solid #56a1aa; padding: 3px 6px; font-size: 10px; }
@@ -147,7 +153,7 @@ footer { color: #687579; font-size: .7rem; text-align: center; padding: 20px 0 0
 
 @media (max-width: 900px) {
   .panel-grid { grid-template-columns: 1fr; }
-  .panel, .scene-panel, .views-panel, .results-panel { grid-column: 1; }
+  .panel, .scene-panel, .rotation-panel, .views-panel, .results-panel { grid-column: 1; }
   .target-layout { grid-template-columns: 1fr; }
   .target-preview { max-width: 260px; }
   .view-grid, .comparison-grid { grid-template-columns: 1fr; }

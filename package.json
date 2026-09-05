@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint . --max-warnings 0",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "capture:demo": "node scripts/capture-demo.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^8.18.0",
@@ -33,7 +34,9 @@
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
+    "gifenc": "^1.0.3",
     "globals": "^15.14.0",
+    "pngjs": "^7.0.0",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.18.2",
     "vite": "^6.0.5",

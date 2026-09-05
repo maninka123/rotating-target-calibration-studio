@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { C7, C10 } from './core/presets'
+import { DUAL_APERTURE } from './core/presets'
+import { scenarioConfiguration, type ScenarioName } from './core/scenarios'
+import { parseConfiguration } from './core/config'
 import type { EstimateResult, PlacedSensor, SampleFrame, SimulationConfig, SweepRecord, TargetConfig } from './core/types'
 import type { SweepSummary } from './core/sweep'
 import { byId } from './sensors/library'
@@ -8,17 +10,19 @@ import { ResultsPanel } from './ui/results/ResultsPanel'
 import { SensorConfiguration } from './ui/sensors/SensorConfiguration'
 import { TargetDesigner } from './ui/target/TargetDesigner'
 import { LiveSensorViews } from './ui/views/LiveSensorViews'
+import { RotationPanel } from './ui/rotation/RotationPanel'
 import { SimulationWorkerClient } from './workers/client'
 
 const place = (id: string): PlacedSensor => ({ ...byId(id), instanceId: crypto.randomUUID() })
 
 const initialConfig = (): SimulationConfig => ({
-  target: structuredClone(C10),
+  target: structuredClone(DUAL_APERTURE),
   sensors: [place('livox-avia'), place('flir-global')],
   rpm: 5,
   angleDeg: 0,
   playing: true,
   showRays: false,
+  searchResolutionDeg: 1,
 })
 
 export default function App() {
@@ -73,6 +77,7 @@ export default function App() {
         type: 'estimate', sensor, target: config.target, rpm: config.rpm,
         angleDeg: config.angleDeg, startS: 0, acquisitionIndex: acquisition.current,
         estimators,
+        searchResolutionDeg: config.searchResolutionDeg,
       })))
       const next: Record<string, { frame: SampleFrame, results: EstimateResult[] }> = {}
       replies.forEach((reply) => {
@@ -87,24 +92,15 @@ export default function App() {
     setBusy(true)
     setSweepProgress(0.001)
     try {
-      const reply = await worker.request({ type: 'sweep', sensors: config.sensors, target: config.target, rpm: config.rpm, acquisitions: count, estimators }, setSweepProgress)
+      const reply = await worker.request({ type: 'sweep', sensors: config.sensors, target: config.target, rpm: config.rpm, acquisitions: count, estimators, searchResolutionDeg: config.searchResolutionDeg }, setSweepProgress)
       setSweepRecords(reply.records as SweepRecord[])
       setSweepSummaries(reply.summaries as SweepSummary[])
       setSweepProgress(1)
     } finally { setBusy(false) }
   }, [config, worker])
 
-  const applyScenario = (name: string) => {
-    const common = { rpm: 5, angleDeg: 0, playing: false, showRays: false }
-    const scenarios: Record<string, SimulationConfig> = {
-      sparse: { ...common, target: structuredClone(C10), sensors: [place('ls-c4')] },
-      camera: { ...common, target: structuredClone(C10), sensors: [place('flir-global')] },
-      ablation: { ...common, target: structuredClone(C7), sensors: [place('puck-hires')] },
-      rolling: { ...common, rpm: 12, target: structuredClone(C10), sensors: [place('flir-global'), place('flir-rolling')] },
-      offset: { ...common, target: structuredClone(C10), sensors: [place('livox-avia'), place('flir-global')] },
-      resolution: { ...common, target: structuredClone(C10), sensors: [place('flir-global')] },
-    }
-    setConfig(scenarios[name])
+  const applyScenario = (name: ScenarioName) => {
+    setConfig(scenarioConfiguration(name))
     setFrames({})
     setEstimates({})
     setSweepRecords([])
@@ -113,7 +109,7 @@ export default function App() {
 
   const importConfig = (incoming: SimulationConfig) => {
     if (!incoming.target || !Array.isArray(incoming.sensors) || incoming.sensors.length < 1 || incoming.sensors.length > 3) throw new Error('Invalid configuration')
-    setConfig({ ...incoming, playing: false })
+    setConfig(parseConfiguration(JSON.stringify(incoming)))
   }
 
   return (
@@ -124,19 +120,20 @@ export default function App() {
       </header>
       <nav className="scenario-bar" aria-label="Preset scenarios">
         <span>Scenarios</span>
-        <button onClick={() => applyScenario('sparse')}>Sparse ring failure</button>
-        <button onClick={() => applyScenario('camera')}>Dense camera baseline</button>
-        <button onClick={() => applyScenario('ablation')}>Aperture ablation</button>
-        <button onClick={() => applyScenario('rolling')}>Rolling shutter at rate</button>
-        <button onClick={() => applyScenario('offset')}>LiDAR–camera offset</button>
-        <button onClick={() => applyScenario('resolution')}>Resolution threshold</button>
+        <button onClick={() => applyScenario('Sparse ring failure')}>Sparse ring failure</button>
+        <button onClick={() => applyScenario('Dense camera')}>Dense camera</button>
+        <button onClick={() => applyScenario('Aperture ablation')}>Aperture ablation</button>
+        <button onClick={() => applyScenario('Rolling shutter at rate')}>Rolling shutter at rate</button>
+        <button onClick={() => applyScenario('LiDAR–camera offset')}>LiDAR–camera offset</button>
+        <button onClick={() => applyScenario('Resolution threshold')}>Resolution threshold</button>
       </nav>
       <main className="panel-grid">
         <TargetDesigner target={config.target} onChange={(target: TargetConfig) => set('target', target)} />
         <SensorConfiguration target={config.target} sensors={config.sensors} onChange={(sensors) => set('sensors', sensors)} />
         <ScenePanel target={config.target} sensors={config.sensors} rpm={config.rpm} angleDeg={config.angleDeg} playing={config.playing} showRays={config.showRays} onRpm={(rpm) => set('rpm', rpm)} onAngle={(angle) => set('angleDeg', angle)} onPlaying={(playing) => set('playing', playing)} onShowRays={(show) => set('showRays', show)} />
+        <RotationPanel target={config.target} angleDeg={config.angleDeg} playing={config.playing} rpm={config.rpm} />
         <LiveSensorViews sensors={config.sensors} frames={frames} target={config.target} />
-        <ResultsPanel playing={config.playing} sensors={config.sensors} config={config} estimates={estimates} onEstimate={runEstimate} busy={busy} sweepProgress={sweepProgress} sweepRecords={sweepRecords} sweepSummaries={sweepSummaries} onSweep={runSweepMode} onImport={importConfig} />
+        <ResultsPanel playing={config.playing} sensors={config.sensors} config={config} estimates={estimates} onEstimate={runEstimate} busy={busy} sweepProgress={sweepProgress} sweepRecords={sweepRecords} sweepSummaries={sweepSummaries} onSweep={runSweepMode} onImport={importConfig} onSearchResolution={(value) => set('searchResolutionDeg', value)} />
       </main>
       <footer>All calculations run locally. No telemetry, backend, ROS runtime, or external service is used.</footer>
     </div>

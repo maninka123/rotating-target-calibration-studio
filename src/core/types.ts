@@ -25,6 +25,7 @@ export type Architecture =
   | 'micro-mirror'
   | 'electronic-array'
   | 'rotating-mirror'
+  | 'single-plane'
   | 'camera'
 
 export type TimestampConvention =
@@ -53,15 +54,14 @@ export interface SensorDefinition {
   wedgeBDeg?: number
   gridColumns?: number
   gridRows?: number
+  fastAxisHz?: number
+  slowAxisHz?: number
+  emitterCount?: number
   resolution?: [number, number]
   focalLengthMm?: number
   pixelPitchUm?: number
   shutter?: 'global' | 'rolling'
   spectralBand?: string
-  targetFrameHeightFraction?: number
-  nominalBandSamples?: number
-  nominalRings?: number
-  sparseFailureRate?: number
 }
 
 export interface PlacedSensor extends SensorDefinition {
@@ -70,6 +70,7 @@ export interface PlacedSensor extends SensorDefinition {
 
 export interface SampleFrame {
   sensorId: string
+  architecture: Architecture
   acquisitionIndex: number
   acquisitionStartS: number
   reportedTimeS: number
@@ -90,7 +91,7 @@ export interface SampleFrame {
 export interface EstimateResult {
   estimator: 'contour' | 'geometric'
   accepted: boolean
-  reason?: 'insufficient boundary support' | 'correspondence failure' | 'fewer than 50 samples in working band' | 'fewer than 3 samples in each class' | 'minimum cost above threshold'
+  reason?: 'insufficient boundary support' | 'correspondence failure' | 'insufficient two-dimensional boundary coverage' | 'fewer than 50 samples in working band' | 'fewer than 3 samples in each class' | 'minimum cost above threshold'
   angleDeg?: number
   trueAngleDeg: number
   signedErrorDeg?: number
@@ -108,6 +109,7 @@ export interface SimulationConfig {
   angleDeg: number
   playing: boolean
   showRays: boolean
+  searchResolutionDeg: number
 }
 
 export interface SweepRecord {

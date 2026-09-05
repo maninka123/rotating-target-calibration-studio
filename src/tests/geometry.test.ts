@@ -1,33 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import { apertureArea, angularSensitivity, bendingStressMpa, centreOfMassEccentricity, minimumPlateThicknessMm, minimumStandOffM, predictedDispersionRatio } from '../core/geometry'
-import { C7, C10, C11 } from '../core/presets'
+import { SINGLE_APERTURE, DUAL_APERTURE, TRIPLE_APERTURE } from '../core/presets'
 
 describe('target geometry validation', () => {
   it.each([
-    ['C7', C7, 6.09e6],
-    ['C10', C10, 11.60e6],
-    ['C11', C11, 17.11e6],
+    ['SINGLE_APERTURE', SINGLE_APERTURE, 6.09e6],
+    ['DUAL_APERTURE', DUAL_APERTURE, 11.60e6],
+    ['TRIPLE_APERTURE', TRIPLE_APERTURE, 17.11e6],
   ])('computes Lambda for %s', (_, target, expected) => {
     expect(angularSensitivity(target)).toBeCloseTo(expected, -4)
   })
 
   it.each([
-    ['C7', C7, 21782],
-    ['C10', C10, 29221],
-    ['C11', C11, 36661],
+    ['SINGLE_APERTURE', SINGLE_APERTURE, 21782],
+    ['DUAL_APERTURE', DUAL_APERTURE, 29221],
+    ['TRIPLE_APERTURE', TRIPLE_APERTURE, 36661],
   ])('computes aperture area for %s', (_, target, expected) => {
     expect(apertureArea(target)).toBeCloseTo(expected, 0)
   })
 
   it('computes predicted dispersion reductions', () => {
-    expect(1 - predictedDispersionRatio(C7, C10)).toBeCloseTo(0.28, 2)
-    expect(1 - predictedDispersionRatio(C7, C11)).toBeCloseTo(0.40, 2)
-    expect(1 - predictedDispersionRatio(C10, C11)).toBeCloseTo(0.18, 2)
+    expect(1 - predictedDispersionRatio(SINGLE_APERTURE, DUAL_APERTURE)).toBeCloseTo(0.28, 2)
+    expect(1 - predictedDispersionRatio(SINGLE_APERTURE, TRIPLE_APERTURE)).toBeCloseTo(0.40, 2)
+    expect(1 - predictedDispersionRatio(DUAL_APERTURE, TRIPLE_APERTURE)).toBeCloseTo(0.18, 2)
   })
 
   it('computes mechanical checks', () => {
-    expect(centreOfMassEccentricity(C11)).toBeCloseTo(21.63, 2)
-    expect(minimumPlateThicknessMm(C10)).toBeCloseTo(2.73, 2)
+    expect(centreOfMassEccentricity(TRIPLE_APERTURE)).toBeCloseTo(21.63, 2)
+    expect(minimumPlateThicknessMm(DUAL_APERTURE)).toBeCloseTo(2.73, 2)
     expect(bendingStressMpa(160, 3)).toBeCloseTo(0.68, 2)
   })
 })

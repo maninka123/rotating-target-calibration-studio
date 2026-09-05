@@ -1,5 +1,6 @@
 import type { EstimateResult, SampleFrame, TargetConfig } from '../../core/types'
 import { APERTURE, BACKGROUND, MATERIAL } from '../../core/types'
+import { hubRadiusSensorPixels } from '../../core/viewGeometry'
 
 export const CLASS_COLOURS = {
   [MATERIAL]: '#65757b',
@@ -36,6 +37,11 @@ export const drawSamples = (
   context.beginPath()
   context.arc(cx, cy, target.outerDiameterMm / 2 * scale, 0, Math.PI * 2)
   context.stroke()
+  context.fillStyle = 'rgba(201,75,67,.28)'
+  context.beginPath()
+  context.arc(cx, cy, hubRadiusSensorPixels(target, scale), 0, Math.PI * 2)
+  context.fill()
+  context.strokeStyle = '#7f302c'; context.stroke()
   if (estimate?.accepted && estimate.angleDeg !== undefined) {
     drawApertures(context, target, estimate.angleDeg, cx, cy, scale, '#176b75', false)
     drawApertures(context, target, estimate.trueAngleDeg, cx, cy, scale, '#30383a', true)

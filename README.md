@@ -1,10 +1,23 @@
 # Rotating Target Calibration Studio
 
-An interactive, browser-only laboratory for studying temporal calibration with a rotating apertured disc and heterogeneous LiDAR/camera sampling. It combines exact ray–plane intersection, true per-sample observation times, selectable reported-timestamp conventions, a contour baseline and a global geometric boundary fit.
+An interactive, browser-only laboratory for studying temporal calibration with a rotating apertured disc and heterogeneous LiDAR/camera sampling. It combines exact ray–plane intersection, true per-sample observation times, selectable reported-timestamp conventions, a contour matching and a global geometric boundary fit.
+
+## Scope
+
+A standalone browser tool for exploring rotating-target geometry and
+angle estimation. The scene is noise-free: no range noise, classification
+error, boundary blur or radiometric effects. Accuracy shown here is an
+optimistic bound, not measured hardware performance.
 
 **[Open the live application](https://maninka123.github.io/rotating-target-calibration-studio/)**
 
-![Application overview](docs/application-overview.png)
+![Animated 3D simulation demonstration](docs/simulator-demo.gif)
+
+![Face-on rotation view](docs/rotation-view.png)
+
+![Estimation overlay](docs/estimation-overlay.png)
+
+![Sweep results](docs/sweep-results.png)
 
 ## Quick start
 
@@ -29,19 +42,28 @@ npm run preview
 
 ## What is included
 
-- Live C7/C10/C11 target editing with sensitivity, removed area, centre-of-mass and plate checks.
-- Six shared sensor architectures and sixteen built-ins.
+- Live single-, dual- and triple-aperture target editing with sensitivity, removed area, centre-of-mass and plate checks.
+- Seven shared sensor architectures and seventeen built-ins.
 - One to three sensors with independent stand-off and timestamp conventions.
 - A Three.js scene with true aperture holes, sensor frustums, orbit controls and optional rays.
 - Typed-array sample frames generated and estimated in a Web Worker.
-- Frozen-frame contour and geometric estimation with publication-style overlays and cost curves.
+- Frozen-frame contour and geometric estimation with technical overlays and cost curves.
 - Batch sweeps, error statistics, signed-error plots, cross-sensor time-offset recovery and CSV export.
 - Configuration JSON import/export and a persistent custom sensor builder.
-- Six one-click teaching/validation scenarios.
+- Six one-click teaching and validation scenarios.
+
+## Preset scenarios
+
+- **Sparse ring failure:** demonstrates contour rejection on four scan rings.
+- **Dense camera:** compares both estimators on global-shutter imagery.
+- **Aperture ablation:** explores the single-, dual- and triple-aperture sensitivity progression.
+- **Rolling shutter at rate:** contrasts global and sequential row exposure at speed.
+- **LiDAR–camera offset:** recovers the configured accumulation-to-exposure time offset.
+- **Resolution threshold:** downsamples camera geometry toward estimator rejection.
 
 ## Adding a custom sensor
 
-Open **Panel 2 — Sensor configuration**, select **Build a custom sensor**, choose one of the six architecture templates, enter its FOV, stand-off and nominal acquisition density, then save it. Validation runs before saving. Custom definitions use the same `SensorDefinition` schema and code path as built-ins and persist in browser `localStorage`.
+Open **Panel 2 — Sensor configuration**, select **Build a custom sensor**, choose an architecture, enter its FOV, stand-off and scan parameters, then save it. The preview generates the resulting rays and reports the counted band samples before saving. Custom definitions use the same `SensorDefinition` schema and code path as built-ins and persist in browser `localStorage`.
 
 For source-controlled sensors, add a JSON-serialisable object to `src/sensors/library.ts`. Architecture-specific optional fields are defined in `src/core/types.ts`.
 
@@ -65,7 +87,7 @@ r̄ = (2/3) (R³ − ρ³)/(R² − ρ²) · sin(α/2)/(α/2)
 
 and remaining-plate eccentricity follows from removed-area moments. Plate checks use aluminium density 2700 kg/m³, `E = 70 GPa`, gravity 9.81 m/s² and a 0.05 mm deflection limit.
 
-The proposed estimator performs a global 0–360° class-agreement search, applies a clipped boundary tolerance, then refines the best interval by golden-section search.
+The geometric boundary-fit estimator performs a configurable-resolution global 0–360° class-agreement search, applies a clipped boundary tolerance, then refines the best interval by golden-section search. The default coarse search step is 1°.
 
 ## Licence
 

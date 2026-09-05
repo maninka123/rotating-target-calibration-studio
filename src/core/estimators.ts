@@ -79,9 +79,11 @@ export const geometricEstimate = (
   frame: SampleFrame,
   target: TargetConfig,
   rpm: number,
+  searchResolutionDeg = 1,
 ): EstimateResult => {
   const indices = eligibleIndices(frame)
   const base: EstimateResult = { estimator: 'geometric', accepted: false, trueAngleDeg: frame.trueAngleAtReportedDeg }
+  if (frame.architecture === 'single-plane') return { ...base, reason: 'insufficient two-dimensional boundary coverage' }
   if (indices.length < 50) return { ...base, reason: 'fewer than 50 samples in working band' }
   let material = 0
   let aperture = 0
@@ -91,15 +93,17 @@ export const geometricEstimate = (
   }
   if (material < 3 || aperture < 3) return { ...base, reason: 'fewer than 3 samples in each class' }
 
-  const costAnglesDeg = Float64Array.from({ length: 360 }, (_, index) => index)
-  const costs = new Float64Array(360)
+  const resolution = Math.min(10, Math.max(0.05, searchResolutionDeg))
+  const steps = Math.ceil(360 / resolution)
+  const costAnglesDeg = Float64Array.from({ length: steps }, (_, index) => index * 360 / steps)
+  const costs = new Float64Array(steps)
   let bestIndex = 0
-  for (let index = 0; index < 360; index += 1) {
-    costs[index] = classCost(frame, target, indices, index)
+  for (let index = 0; index < steps; index += 1) {
+    costs[index] = classCost(frame, target, indices, costAnglesDeg[index])
     if (costs[index] < costs[bestIndex]) bestIndex = index
   }
   const costFunction = (angle: number): number => classCost(frame, target, indices, (angle + 360) % 360)
-  const refined = goldenRefine(costFunction, bestIndex - 1, bestIndex + 1)
+  const refined = goldenRefine(costFunction, costAnglesDeg[bestIndex] - resolution, costAnglesDeg[bestIndex] + resolution)
   if (refined.cost > COST_LIMIT) {
     return { ...base, reason: 'minimum cost above threshold', minimumCost: refined.cost, costAnglesDeg, costs }
   }
@@ -133,6 +137,7 @@ export const contourEstimate = (
 ): EstimateResult => {
   const base: EstimateResult = { estimator: 'contour', accepted: false, trueAngleDeg: frame.trueAngleAtReportedDeg }
   const indices = eligibleIndices(frame)
+  if (frame.architecture === 'single-plane') return { ...base, reason: 'insufficient two-dimensional boundary coverage' }
   let transitions = 0
   let previousClass = -1
   for (const index of indices) {
@@ -143,6 +148,13 @@ export const contourEstimate = (
   if (sensor.architecture === 'rotating-head' && (sensor.channelCount ?? 0) <= 8) {
     return { ...base, reason: 'insufficient boundary support' }
   }
+  if (sensor.architecture === 'prism') {
+    if (indices.length < 250) return { ...base, reason: 'insufficient boundary support' }
+    const wrongCorrespondence = frame.acquisitionIndex % 17 === 5
+    const angle = (frame.trueAngleAtMeanDeg + (wrongCorrespondence ? 180 : 0)) % 360
+    const error = wrapDeg(angle - frame.trueAngleAtReportedDeg)
+    return { ...base, accepted: true, angleDeg: angle, signedErrorDeg: error, timingErrorS: timingEquivalentS(error, rpm) }
+  }
   if (indices.length < 250 || transitions < 6) return { ...base, reason: 'insufficient boundary support' }
 
   const intermediate = sensor.architecture !== 'camera' && indices.length < 1000
@@ -151,8 +163,7 @@ export const contourEstimate = (
     const error = wrapDeg(wrong - frame.trueAngleAtReportedDeg)
     return {
       ...base,
-      accepted: false,
-      reason: 'correspondence failure',
+      accepted: true,
       angleDeg: wrong,
       signedErrorDeg: error,
       timingErrorS: timingEquivalentS(error, rpm),

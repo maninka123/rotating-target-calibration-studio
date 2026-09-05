@@ -1,8 +1,9 @@
 import { apertureArea, angularSensitivity, bendingStressMpa, centreOfMassEccentricity, minimumPlateThicknessMm, predictedDispersionRatio, removedAreaRelativeTo } from '../../core/geometry'
-import { C7, C10, C11 } from '../../core/presets'
+import { DUAL_APERTURE, SINGLE_APERTURE, TRIPLE_APERTURE } from '../../core/presets'
 import type { TargetConfig } from '../../core/types'
 import { NumberField } from '../shared/NumberField'
 import { Panel } from '../shared/Panel'
+import { hubRadiusPreviewUnits } from '../../core/viewGeometry'
 
 interface Props {
   target: TargetConfig
@@ -22,9 +23,9 @@ export function TargetDesigner({ target, onChange }: Props) {
   return (
     <Panel number={1} title="Target designer" className="target-panel">
       <div className="preset-row" aria-label="Target presets">
-        <button onClick={() => onChange(structuredClone(C7))}>C7</button>
-        <button className="active" onClick={() => onChange(structuredClone(C10))}>C10 proposed</button>
-        <button onClick={() => onChange(structuredClone(C11))}>C11</button>
+        <button onClick={() => onChange(structuredClone(SINGLE_APERTURE))}>Single aperture</button>
+        <button className="active" onClick={() => onChange(structuredClone(DUAL_APERTURE))}>Dual aperture</button>
+        <button onClick={() => onChange(structuredClone(TRIPLE_APERTURE))}>Triple aperture</button>
       </div>
       <div className="target-layout">
         <div>
@@ -51,8 +52,8 @@ export function TargetDesigner({ target, onChange }: Props) {
       </div>
       <div className="readout-grid">
         <Readout label="Angular sensitivity Λ" value={`${(lambda / 1e6).toFixed(2)} × 10⁶ mm³`} />
-        <Readout label="Predicted SD vs C7" value={`${(predictedDispersionRatio(C7, target) * 100).toFixed(1)}%`} />
-        <Readout label="Aperture area" value={`${apertureArea(target).toFixed(0)} mm²`} detail={`${removedAreaRelativeTo(target, C10) >= 0 ? '+' : ''}${removedAreaRelativeTo(target, C10).toFixed(0)} mm² vs C10`} />
+        <Readout label="Dispersion ratio vs single aperture" value={`${(predictedDispersionRatio(SINGLE_APERTURE, target) * 100).toFixed(1)}%`} />
+        <Readout label="Aperture area" value={`${apertureArea(target).toFixed(0)} mm²`} detail={`${removedAreaRelativeTo(target, DUAL_APERTURE) >= 0 ? '+' : ''}${removedAreaRelativeTo(target, DUAL_APERTURE).toFixed(0)} mm² vs dual aperture`} />
         <Readout label="COM eccentricity" value={`${eccentricity.toFixed(1)} mm`} warning={eccentricity > 28.5} />
         <Readout label="Minimum thickness" value={`${minimumThickness.toFixed(2)} mm`} warning={target.thicknessMm < minimumThickness} />
         <Readout label="Maximum bending stress" value={`${stress.toFixed(2)} MPa`} />
@@ -81,7 +82,7 @@ function TargetPreview({ target }: { target: TargetConfig }) {
       <svg viewBox="0 0 240 240" role="img" aria-label="Target top-down preview">
         <defs><mask id="target-mask"><rect width="240" height="240" fill="black"/><circle cx="120" cy="120" r="100" fill="white"/><path d={path} fill="black"/></mask></defs>
         <circle cx="120" cy="120" r="100" fill="#68777b" mask="url(#target-mask)" />
-        <circle cx="120" cy="120" r={target.hubRadiusMm / radius * 100} fill="#3e494d" />
+        <circle data-hub-radius-mm={target.hubRadiusMm} cx="120" cy="120" r={hubRadiusPreviewUnits(target, 100)} fill="#c94b43" />
         <circle cx="120" cy="120" r="100" fill="none" stroke="#263034" strokeWidth="2" />
         <line x1="120" y1="8" x2="120" y2="232" stroke="#9ca9ac" strokeDasharray="3 4" />
         <line x1="8" y1="120" x2="232" y2="120" stroke="#9ca9ac" strokeDasharray="3 4" />

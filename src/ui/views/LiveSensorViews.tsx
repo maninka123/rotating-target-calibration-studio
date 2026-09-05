@@ -12,7 +12,7 @@ interface Props {
 
 export function LiveSensorViews({ sensors, frames, target }: Props) {
   return (
-    <Panel number={4} title="Live sensor views" className="views-panel">
+    <Panel number={5} title="Live sensor views" className="views-panel">
       <div className="view-grid">
         {sensors.map((sensor) => <SensorTile key={sensor.instanceId} sensor={sensor} frame={frames[sensor.instanceId]} target={target} />)}
       </div>
@@ -29,7 +29,7 @@ function SensorTile({ sensor, frame, target }: { sensor: PlacedSensor, frame?: S
   return (
     <article className="sensor-view">
       <header><div><strong>{sensor.name}</strong><small>{sensor.architecture === 'camera' ? 'Synthetic classified image' : 'Target-plane projection'}</small></div><span className="live-dot">LIVE</span></header>
-      <canvas ref={canvas} aria-label={`${sensor.name} live sensor view`} />
+      <canvas ref={canvas} aria-label={`${sensor.name} live sensor view`} data-hub-radius-mm={target.hubRadiusMm} />
       <div className="tile-readouts">
         <span>Band <strong>{counts.band.toLocaleString()}</strong></span>
         <span>Material <strong>{counts.material.toLocaleString()}</strong></span>
@@ -39,7 +39,7 @@ function SensorTile({ sensor, frame, target }: { sensor: PlacedSensor, frame?: S
         <span>True angle <strong>{frame?.trueAngleAtReportedDeg.toFixed(2) ?? '—'}°</strong></span>
         <span>Report − mean <strong>{frame ? ((frame.reportedTimeS - frame.meanObservationTimeS) * 1000).toFixed(1) : '—'} ms</strong></span>
       </div>
-      {sensor.resolution && <div className="resolution-line">Raw resolution {sensor.resolution[0]} × {sensor.resolution[1]} · target spans {((sensor.targetFrameHeightFraction ?? 0) * 100).toFixed(0)}% of frame height</div>}
+      {sensor.resolution && <div className="resolution-line">Raw resolution {sensor.resolution[0]} × {sensor.resolution[1]} · target spans {frame ? (frame.samplesAcrossTarget / sensor.resolution[1] * 100).toFixed(0) : '—'}% of frame height</div>}
     </article>
   )
 }

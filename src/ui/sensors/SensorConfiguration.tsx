@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { minimumStandOffM } from '../../core/geometry'
+import { classCounts, generateFrame } from '../../core/sampling'
+import { parseCustomSensors, serialiseCustomSensors } from '../../core/config'
 import type { Architecture, PlacedSensor, SensorDefinition, TargetConfig, TimestampConvention } from '../../core/types'
-import { ARCHITECTURE_LABELS, SENSOR_LIBRARY, customSensorErrors, sensorSampleSummary } from '../../sensors/library'
+import { ARCHITECTURE_LABELS, SENSOR_LIBRARY, customSensorErrors } from '../../sensors/library'
 import { NumberField } from '../shared/NumberField'
 import { Panel } from '../shared/Panel'
 
@@ -21,7 +23,7 @@ const conventions: { value: TimestampConvention, label: string }[] = [
 export function SensorConfiguration({ target, sensors, onChange }: Props) {
   const [builderOpen, setBuilderOpen] = useState(false)
   const [customSensors, setCustomSensors] = useState<SensorDefinition[]>(() => {
-    try { return JSON.parse(localStorage.getItem('rotating-target-custom-sensors') ?? '[]') as SensorDefinition[] } catch { return [] }
+    try { return parseCustomSensors(localStorage.getItem('rotating-target-custom-sensors') ?? '[]') } catch { return [] }
   })
   const library = [...SENSOR_LIBRARY, ...customSensors]
   const update = (index: number, patch: Partial<PlacedSensor>) => onChange(sensors.map((sensor, position) => position === index ? { ...sensor, ...patch } : sensor))
@@ -32,7 +34,7 @@ export function SensorConfiguration({ target, sensors, onChange }: Props) {
   const saveCustom = (sensor: SensorDefinition) => {
     const next = [...customSensors.filter((item) => item.id !== sensor.id), sensor]
     setCustomSensors(next)
-    localStorage.setItem('rotating-target-custom-sensors', JSON.stringify(next))
+    localStorage.setItem('rotating-target-custom-sensors', serialiseCustomSensors(next))
     setBuilderOpen(false)
   }
   return (
@@ -58,15 +60,18 @@ export function SensorConfiguration({ target, sensors, onChange }: Props) {
         })}
       </div>
       <button className="text-button" onClick={() => setBuilderOpen((value) => !value)}>{builderOpen ? 'Close custom sensor builder' : 'Build a custom sensor'}</button>
-      {builderOpen && <CustomBuilder onSave={saveCustom} />}
+      {builderOpen && <CustomBuilder target={target} onSave={saveCustom} />}
     </Panel>
   )
 }
 
-function CustomBuilder({ onSave }: { onSave: (sensor: SensorDefinition) => void }) {
+function CustomBuilder({ target, onSave }: { target: TargetConfig, onSave: (sensor: SensorDefinition) => void }) {
   const [sensor, setSensor] = useState<SensorDefinition>({ ...structuredClone(SENSOR_LIBRARY[0]), id: `custom-${Date.now()}`, name: 'Custom sensor' })
   const errors = useMemo(() => customSensorErrors(sensor), [sensor])
-  const summary = sensorSampleSummary(sensor)
+  const summary = useMemo(() => {
+    const frame = generateFrame({ ...sensor, instanceId: sensor.id }, target, 0, 0, 0)
+    return { sampleCount: classCounts(frame).band, acrossTarget: frame.samplesAcrossTarget }
+  }, [sensor, target])
   const setArchitecture = (architecture: Architecture) => {
     const template = SENSOR_LIBRARY.find((item) => item.architecture === architecture) ?? SENSOR_LIBRARY[0]
     setSensor({ ...structuredClone(template), id: sensor.id, name: sensor.name })
@@ -80,7 +85,8 @@ function CustomBuilder({ onSave }: { onSave: (sensor: SensorDefinition) => void 
         <NumberField label="Horizontal FOV" value={sensor.horizontalFovDeg} unit="°" min={1} max={360} onChange={(value) => setSensor({ ...sensor, horizontalFovDeg: value })} />
         <NumberField label="Vertical FOV" value={sensor.verticalFovDeg} unit="°" min={1} max={179} onChange={(value) => setSensor({ ...sensor, verticalFovDeg: value })} />
         <NumberField label="Stand-off" value={sensor.standOffM} unit="m" min={0.1} step={0.1} onChange={(value) => setSensor({ ...sensor, standOffM: value })} />
-        <NumberField label="Nominal band samples" value={sensor.nominalBandSamples ?? 500} min={50} onChange={(value) => setSensor({ ...sensor, nominalBandSamples: value })} />
+        {['prism', 'micro-mirror', 'rotating-mirror'].includes(sensor.architecture) && <NumberField label="Pulse rate" value={sensor.sampleRateHz ?? 10000} unit="Hz" min={100} onChange={(value) => setSensor({ ...sensor, sampleRateHz: value })} />}
+        {sensor.architecture === 'electronic-array' && <><NumberField label="Grid columns" value={sensor.gridColumns ?? 64} min={2} onChange={(value) => setSensor({ ...sensor, gridColumns: value })} /><NumberField label="Grid rows" value={sensor.gridRows ?? 48} min={2} onChange={(value) => setSensor({ ...sensor, gridRows: value })} /></>}
       </div>
       <p className="builder-summary">Estimated {summary.sampleCount.toLocaleString()} band samples · {summary.acrossTarget.toFixed(0)} samples across target</p>
       {errors.length > 0 && <div className="warning">{errors.join(' · ')}</div>}

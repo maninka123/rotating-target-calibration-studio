@@ -13,7 +13,7 @@ export const reportedTimestamp = (
     case 'instantaneous': return firstSampleS
     case 'window-start': return acquisitionStartS
     case 'exposure-midpoint': return (firstSampleS + lastSampleS) / 2
-    case 'rolling-readout': return acquisitionStartS
+    case 'rolling-readout': return acquisitionStartS + sensor.integrationTimeS
   }
 }
 

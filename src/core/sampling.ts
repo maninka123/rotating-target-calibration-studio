@@ -2,97 +2,54 @@ import { apertureContains, DEG, rayPlaneIntersection } from './geometry'
 import { angleAtTimeDeg, reportedTimestamp } from './timing'
 import type { PlacedSensor, SampleFrame, SensorDefinition, TargetConfig } from './types'
 import { APERTURE, BACKGROUND, MATERIAL } from './types'
-import { SENSOR_LIBRARY, sensorSampleSummary } from '../sensors/library'
 
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+const TAU = 2 * Math.PI
 
-const fractional = (value: number): number => value - Math.floor(value)
+export const channelElevationsDeg = (sensor: SensorDefinition): number[] => {
+  const count = Math.max(1, Math.round(sensor.channelCount ?? 1))
+  return Array.from({ length: count }, (_, index) => count === 1 ? 0 : -sensor.verticalFovDeg / 2 + sensor.verticalFovDeg * index / (count - 1))
+}
 
-const acquisitionSpan = (sensor: SensorDefinition): number => {
-  if (sensor.timestampConvention === 'instantaneous') return 0
-  if (sensor.timestampConvention === 'rolling-readout') return sensor.readoutTimeS
+const scanSpanS = (sensor: SensorDefinition): number => {
+  if (sensor.architecture === 'rotating-head' || sensor.architecture === 'rotating-mirror' || sensor.architecture === 'single-plane') return 1 / (sensor.headRateHz ?? 10)
+  if (sensor.architecture === 'camera' && sensor.shutter === 'rolling') return sensor.readoutTimeS
   return sensor.integrationTimeS
 }
 
-const referenceSensor = (sensor: SensorDefinition): SensorDefinition | undefined =>
-  SENSOR_LIBRARY.find((item) => item.id === sensor.id)
+interface CameraCrop { minColumn: number, columns: number, minRow: number, rows: number }
 
-export const expectedBandSampleCount = (sensor: SensorDefinition, target: TargetConfig): number => {
-  const reference = referenceSensor(sensor)
-  const baseCount = sensor.nominalBandSamples ?? sensorSampleSummary(sensor).sampleCount
-  const referenceStandOff = reference?.standOffM ?? sensor.standOffM
-  const radius = target.outerDiameterMm / 2
-  const baseBandArea = 210 ** 2 - 50 ** 2
-  const targetBandArea = Math.max(1, radius ** 2 - target.hubRadiusMm ** 2)
-  let scale = targetBandArea / baseBandArea * (referenceStandOff / sensor.standOffM) ** 2
-  if (sensor.architecture === 'camera' && sensor.resolution && reference?.resolution) {
-    scale *= (sensor.resolution[0] * sensor.resolution[1])
-      / (reference.resolution[0] * reference.resolution[1])
-  }
-  return Math.max(0, Math.round(baseCount * scale))
+const cameraCrop = (sensor: SensorDefinition, target: TargetConfig): CameraCrop => {
+  const [width, height] = sensor.resolution ?? [1, 1]
+  const pitchMm = (sensor.pixelPitchUm ?? 1) / 1000
+  const focalMm = sensor.focalLengthMm ?? 1
+  const projectedRadiusPixels = (target.outerDiameterMm / 2000) / sensor.standOffM * focalMm / pitchMm
+  const centreColumn = (width - 1) / 2
+  const centreRow = (height - 1) / 2
+  const minColumn = Math.max(0, Math.floor(centreColumn - projectedRadiusPixels - 1))
+  const maxColumn = Math.min(width - 1, Math.ceil(centreColumn + projectedRadiusPixels + 1))
+  const minRow = Math.max(0, Math.floor(centreRow - projectedRadiusPixels - 1))
+  const maxRow = Math.min(height - 1, Math.ceil(centreRow + projectedRadiusPixels + 1))
+  return { minColumn, columns: maxColumn - minColumn + 1, minRow, rows: maxRow - minRow + 1 }
+}
+
+const rayCount = (sensor: SensorDefinition, target: TargetConfig): number => {
+  if (sensor.architecture === 'rotating-head') return Math.ceil(360 / (sensor.horizontalResolutionDeg ?? 0.2)) * Math.max(1, Math.round(sensor.channelCount ?? 1))
+  if (sensor.architecture === 'single-plane') return Math.ceil(sensor.horizontalFovDeg / (sensor.horizontalResolutionDeg ?? 0.1)) + 1
+  if (sensor.architecture === 'electronic-array') return Math.max(1, Math.round(sensor.gridColumns ?? 1)) * Math.max(1, Math.round(sensor.gridRows ?? 1))
+  if (sensor.architecture === 'camera') { const crop = cameraCrop(sensor, target); return crop.columns * crop.rows }
+  return Math.max(1, Math.round((sensor.sampleRateHz ?? 1) * scanSpanS(sensor)))
 }
 
 export const samplesAcrossTarget = (sensor: SensorDefinition, target: TargetConfig): number => {
-  if (sensor.architecture === 'camera' && sensor.resolution) {
-    const reference = referenceSensor(sensor)
-    const baseFraction = sensor.targetFrameHeightFraction ?? 0.25
-    const standScale = (reference?.standOffM ?? sensor.standOffM) / sensor.standOffM
-    return sensor.resolution[1] * baseFraction * standScale * target.outerDiameterMm / 420
-  }
-  const angularDiameter = 2 * Math.atan((target.outerDiameterMm / 2000) / sensor.standOffM) / DEG
-  const step = sensor.horizontalResolutionDeg ?? Math.min(sensor.horizontalFovDeg, sensor.verticalFovDeg) / Math.sqrt(sensor.nominalBandSamples ?? 500)
-  return angularDiameter / step
+  const angularDiameterDeg = 2 * Math.atan((target.outerDiameterMm / 2000) / sensor.standOffM) / DEG
+  if (sensor.architecture === 'camera') return target.outerDiameterMm / 1000 / sensor.standOffM * (sensor.focalLengthMm ?? 1) / ((sensor.pixelPitchUm ?? 1) * 1e-6)
+  if (sensor.architecture === 'electronic-array') return angularDiameterDeg / (sensor.horizontalFovDeg / Math.max(1, (sensor.gridColumns ?? 2) - 1))
+  return angularDiameterDeg / (sensor.horizontalResolutionDeg ?? sensor.horizontalFovDeg / Math.sqrt(rayCount(sensor, target)))
 }
 
-const pointFor = (
-  sensor: SensorDefinition,
-  target: TargetConfig,
-  index: number,
-  count: number,
-  acquisitionIndex: number,
-): [number, number] => {
-  const outer = target.outerDiameterMm / 2
-  const inner = target.hubRadiusMm
-  const phase = acquisitionIndex * 0.731
-  if (sensor.architecture === 'rotating-head') {
-    const rings = Math.max(1, sensor.nominalRings ?? sensor.channelCount ?? 4)
-    const ring = index % rings
-    const y = rings === 1 ? 0 : -outer * 0.92 + 1.84 * outer * ring / (rings - 1)
-    const extent = Math.sqrt(Math.max(0, outer ** 2 - y ** 2))
-    const along = Math.floor(index / rings)
-    const perRing = Math.ceil(count / rings)
-    const x = -extent + 2 * extent * ((along + 0.5) / perRing)
-    if (Math.hypot(x, y) < inner) return [Math.sign(x || 1) * inner * 1.02, y]
-    return [x, y]
-  }
-  if (sensor.architecture === 'prism') {
-    const theta = 2 * Math.PI * fractional(index * 0.61803398875 + phase)
-    const radialWave = 0.15 + 0.85 * Math.abs(Math.sin(index * 0.0137 + phase) * Math.cos(index * 0.0091 - phase))
-    const radius = Math.sqrt(inner ** 2 + radialWave * (outer ** 2 - inner ** 2))
-    return [radius * Math.cos(theta), radius * Math.sin(theta)]
-  }
-  if (sensor.architecture === 'micro-mirror') {
-    const u = fractional(index * 0.754877666 + phase)
-    const v = fractional(index * 0.569840296 + phase * 0.37)
-    const x = (2 * u - 1) * outer
-    const y = Math.sin((2 * v - 1) * Math.PI / 2) * outer
-    const radius = Math.hypot(x, y)
-    if (radius > outer || radius < inner) {
-      const theta = index * GOLDEN_ANGLE + phase
-      const r = inner + (outer - inner) * fractional(index * 0.4142)
-      return [r * Math.cos(theta), r * Math.sin(theta)]
-    }
-    return [x, y]
-  }
-  if (sensor.architecture === 'rotating-mirror') {
-    const theta = index * GOLDEN_ANGLE + phase
-    const radius = Math.sqrt(inner ** 2 + fractional(index * 0.367879 + phase) * (outer ** 2 - inner ** 2))
-    const stripe = 0.82 + 0.18 * Math.sin(index * 0.071 + phase)
-    return [radius * Math.cos(theta) * stripe, radius * Math.sin(theta)]
-  }
-  const theta = index * GOLDEN_ANGLE + phase * 0.05
-  const radius = Math.sqrt(inner ** 2 + ((index + 0.5) / count) * (outer ** 2 - inner ** 2))
-  return [radius * Math.cos(theta), radius * Math.sin(theta)]
+export const rotatingHeadBandRingCount = (sensor: SensorDefinition, target: TargetConfig): number => {
+  const outer = target.outerDiameterMm / 2000
+  return channelElevationsDeg(sensor).filter((elevation) => Math.abs(sensor.standOffM * Math.tan(elevation * DEG)) <= outer + 1e-12).length
 }
 
 export const generateFrame = (
@@ -103,13 +60,7 @@ export const generateFrame = (
   acquisitionStartS: number,
   acquisitionIndex = 0,
 ): SampleFrame => {
-  let bandCount = expectedBandSampleCount(sensor, target)
-  if (sensor.architecture === 'micro-mirror' && sensor.sparseFailureRate) {
-    const draw = fractional(Math.sin((acquisitionIndex + 1) * 91.173) * 43758.5453)
-    if (draw < sensor.sparseFailureRate) bandCount = 30
-  }
-  const backgroundCount = Math.min(1500, Math.max(24, Math.round(Math.sqrt(Math.max(1, bandCount)) * 3)))
-  const total = bandCount + backgroundCount
+  const total = rayCount(sensor, target)
   const xMm = new Float64Array(total)
   const yMm = new Float64Array(total)
   const radiusMm = new Float64Array(total)
@@ -117,43 +68,85 @@ export const generateFrame = (
   const observationTimeS = new Float64Array(total)
   const classes = new Uint8Array(total)
   const inWorkingBand = new Uint8Array(total)
-  const span = acquisitionSpan(sensor)
-  const outer = target.outerDiameterMm / 2
+  const span = scanSpanS(sensor)
+  const outerMm = target.outerDiameterMm / 2
+  const direction = new Float64Array(3)
+  const elevations = sensor.architecture === 'rotating-head' ? channelElevationsDeg(sensor) : []
+  const crop = sensor.architecture === 'camera' ? cameraCrop(sensor, target) : null
+  const [imageWidth, imageHeight] = sensor.resolution ?? [1, 1]
 
   for (let index = 0; index < total; index += 1) {
-    let intendedX: number
-    let intendedY: number
-    if (index < bandCount) {
-      ;[intendedX, intendedY] = pointFor(sensor, target, index, bandCount, acquisitionIndex)
+    let fraction = total <= 1 ? 0 : index / (total - 1)
+    if (sensor.architecture === 'rotating-head') {
+      const channels = elevations.length
+      const azimuthSteps = total / channels
+      const channel = index % channels
+      const azimuthIndex = Math.floor(index / channels)
+      const azimuth = (-180 + 360 * azimuthIndex / azimuthSteps) * DEG
+      const elevation = elevations[channel] * DEG
+      direction[0] = Math.cos(elevation) * Math.sin(azimuth)
+      direction[1] = Math.sin(elevation)
+      direction[2] = Math.cos(elevation) * Math.cos(azimuth)
+      fraction = azimuthIndex / Math.max(1, azimuthSteps - 1)
+    } else if (sensor.architecture === 'prism') {
+      const time = fraction * span
+      const phaseA = acquisitionIndex * Math.SQRT2
+      const phaseB = acquisitionIndex * Math.sqrt(3)
+      const angleA = TAU * (sensor.prismRateAHz ?? 1) * time + phaseA
+      const angleB = TAU * (sensor.prismRateBHz ?? -1) * time + phaseB
+      direction[0] = Math.tan((sensor.wedgeADeg ?? 1) * DEG) * Math.cos(angleA) + Math.tan((sensor.wedgeBDeg ?? 1) * DEG) * Math.cos(angleB)
+      direction[1] = Math.tan((sensor.wedgeADeg ?? 1) * DEG) * Math.sin(angleA) + Math.tan((sensor.wedgeBDeg ?? 1) * DEG) * Math.sin(angleB)
+      direction[2] = 1
+    } else if (sensor.architecture === 'micro-mirror') {
+      const time = fraction * span
+      direction[0] = Math.tan(sensor.horizontalFovDeg * DEG / 2) * Math.sin(TAU * (sensor.fastAxisHz ?? 137) * time + acquisitionIndex * 0.37)
+      const ramp = 2 * ((time * (sensor.slowAxisHz ?? 0.7) + acquisitionIndex * 0.173 + 0.5) % 1) - 1
+      direction[1] = Math.tan(sensor.verticalFovDeg * DEG / 2) * ramp
+      direction[2] = 1
+    } else if (sensor.architecture === 'electronic-array') {
+      const columns = Math.max(1, Math.round(sensor.gridColumns ?? 1))
+      const rows = Math.max(1, Math.round(sensor.gridRows ?? 1))
+      const column = index % columns
+      const row = Math.floor(index / columns)
+      const ax = columns === 1 ? 0 : -sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * column / (columns - 1)
+      const ay = rows === 1 ? 0 : -sensor.verticalFovDeg / 2 + sensor.verticalFovDeg * row / (rows - 1)
+      direction[0] = Math.tan(ax * DEG); direction[1] = Math.tan(ay * DEG); direction[2] = 1
+      fraction = 0.5
+    } else if (sensor.architecture === 'rotating-mirror') {
+      const emitters = Math.max(1, Math.round(sensor.emitterCount ?? 8))
+      const emitter = index % emitters
+      const elevation = emitters === 1 ? 0 : -sensor.verticalFovDeg / 2 + sensor.verticalFovDeg * emitter / (emitters - 1)
+      const time = fraction * span
+      const azimuth = (TAU * (sensor.headRateHz ?? 10) * time + acquisitionIndex * 0.29) % TAU
+      direction[0] = Math.cos(elevation * DEG) * Math.sin(azimuth)
+      direction[1] = Math.sin(elevation * DEG)
+      direction[2] = Math.cos(elevation * DEG) * Math.cos(azimuth)
+    } else if (sensor.architecture === 'single-plane') {
+      const azimuth = (-sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * fraction) * DEG
+      direction[0] = Math.sin(azimuth); direction[1] = 0; direction[2] = Math.cos(azimuth)
     } else {
-      const theta = (index - bandCount) * GOLDEN_ANGLE
-      const radius = outer * (1.03 + 0.35 * fractional(index * 0.41421356))
-      intendedX = radius * Math.cos(theta)
-      intendedY = radius * Math.sin(theta)
+      const column = crop!.minColumn + index % crop!.columns
+      const row = crop!.minRow + Math.floor(index / crop!.columns)
+      const pitchMm = (sensor.pixelPitchUm ?? 1) / 1000
+      direction[0] = (column - (imageWidth - 1) / 2) * pitchMm / (sensor.focalLengthMm ?? 1)
+      direction[1] = -((row - (imageHeight - 1) / 2) * pitchMm / (sensor.focalLengthMm ?? 1))
+      direction[2] = 1
+      fraction = imageHeight <= 1 ? 0 : row / (imageHeight - 1)
     }
 
-    const directionX = intendedX / (sensor.standOffM * 1000)
-    const directionY = intendedY / (sensor.standOffM * 1000)
-    const hit = rayPlaneIntersection(directionX, directionY, 1, sensor.standOffM)
-    if (!hit) continue
+    const observation = sensor.architecture === 'camera' && sensor.shutter !== 'rolling'
+      ? acquisitionStartS + sensor.integrationTimeS / 2
+      : acquisitionStartS + (sensor.architecture === 'camera' ? sensor.integrationTimeS : 0) + span * fraction
+    observationTimeS[index] = observation
+    const hit = rayPlaneIntersection(direction[0], direction[1], direction[2], sensor.standOffM)
+    if (!hit) { xMm[index] = Number.NaN; yMm[index] = Number.NaN; radiusMm[index] = Number.POSITIVE_INFINITY; classes[index] = BACKGROUND; continue }
     const [x, y] = hit
     const radius = Math.hypot(x, y)
     const phi = Math.atan2(y, x)
-    const sequenceFraction = sensor.timestampConvention === 'rolling-readout'
-      ? Math.min(1, Math.max(0, (y / outer + 1) / 2))
-      : total <= 1 ? 0 : index / (total - 1)
-    const observation = acquisitionStartS + span * sequenceFraction
     const rotation = angleAtTimeDeg(initialAngleDeg, rpm, observation - acquisitionStartS) * DEG
-
-    xMm[index] = x
-    yMm[index] = y
-    radiusMm[index] = radius
-    phiRad[index] = phi
-    observationTimeS[index] = observation
-    inWorkingBand[index] = radius >= target.hubRadiusMm && radius <= outer ? 1 : 0
-    classes[index] = radius > outer
-      ? BACKGROUND
-      : apertureContains(target, radius, phi, rotation) ? APERTURE : MATERIAL
+    xMm[index] = x; yMm[index] = y; radiusMm[index] = radius; phiRad[index] = phi
+    inWorkingBand[index] = radius >= target.hubRadiusMm && radius <= outerMm ? 1 : 0
+    classes[index] = radius > outerMm ? BACKGROUND : apertureContains(target, radius, phi, rotation) ? APERTURE : MATERIAL
   }
 
   const first = observationTimeS[0] ?? acquisitionStartS
@@ -161,35 +154,23 @@ export const generateFrame = (
   const mean = observationTimeS.reduce((sum, value) => sum + value, 0) / Math.max(1, total)
   const reported = reportedTimestamp(sensor, acquisitionStartS, first, last)
   return {
-    sensorId: sensor.instanceId,
-    acquisitionIndex,
-    acquisitionStartS,
-    reportedTimeS: reported,
-    meanObservationTimeS: mean,
+    sensorId: sensor.instanceId, architecture: sensor.architecture, acquisitionIndex, acquisitionStartS,
+    reportedTimeS: reported, meanObservationTimeS: mean,
     trueAngleAtReportedDeg: angleAtTimeDeg(initialAngleDeg, rpm, reported - acquisitionStartS),
     trueAngleAtMeanDeg: angleAtTimeDeg(initialAngleDeg, rpm, mean - acquisitionStartS),
-    xMm,
-    yMm,
-    radiusMm,
-    phiRad,
-    observationTimeS,
-    classes,
-    inWorkingBand,
+    xMm, yMm, radiusMm, phiRad, observationTimeS, classes, inWorkingBand,
     samplesAcrossTarget: samplesAcrossTarget(sensor, target),
-    ringCount: sensor.architecture === 'rotating-head' ? sensor.nominalRings ?? sensor.channelCount ?? 0 : 0,
+    ringCount: sensor.architecture === 'rotating-head' ? rotatingHeadBandRingCount(sensor, target) : 0,
   }
 }
 
 export const classCounts = (frame: SampleFrame): { material: number, aperture: number, background: number, band: number } => {
-  let material = 0
-  let aperture = 0
-  let background = 0
-  let band = 0
-  for (let i = 0; i < frame.classes.length; i += 1) {
-    if (frame.classes[i] === MATERIAL) material += 1
-    else if (frame.classes[i] === APERTURE) aperture += 1
+  let material = 0; let aperture = 0; let background = 0; let band = 0
+  for (let index = 0; index < frame.classes.length; index += 1) {
+    if (frame.classes[index] === MATERIAL) material += 1
+    else if (frame.classes[index] === APERTURE) aperture += 1
     else background += 1
-    band += frame.inWorkingBand[i]
+    band += frame.inWorkingBand[index]
   }
   return { material, aperture, background, band }
 }

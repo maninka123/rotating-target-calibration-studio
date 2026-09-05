@@ -3,6 +3,7 @@ import type { EstimateResult, PlacedSensor, SampleFrame, SimulationConfig, Sweep
 import type { SweepSummary } from '../../core/sweep'
 import { Panel } from '../shared/Panel'
 import { drawCost, drawSamples } from '../shared/plots'
+import { parseConfiguration, serialiseConfiguration } from '../../core/config'
 
 interface Props {
   playing: boolean
@@ -16,6 +17,7 @@ interface Props {
   sweepSummaries: SweepSummary[]
   onSweep: (count: number, estimators: ('contour' | 'geometric')[]) => void
   onImport: (config: SimulationConfig) => void
+  onSearchResolution: (value: number) => void
 }
 
 export function ResultsPanel(props: Props) {
@@ -24,12 +26,13 @@ export function ResultsPanel(props: Props) {
   const [count, setCount] = useState(300)
   const selected = (): ('contour' | 'geometric')[] => [...(contour ? ['contour' as const] : []), ...(geometric ? ['geometric' as const] : [])]
   return (
-    <Panel number={5} title="Estimation and results" className="results-panel">
+    <Panel number={6} title="Estimation and results" className="results-panel">
       {props.playing && <div className="paused-notice">Pause rotation to freeze a frame and enable estimation.</div>}
       <div className="estimator-toolbar">
-        <label className="check"><input type="checkbox" checked={contour} onChange={(event) => setContour(event.target.checked)} /> Contour baseline</label>
+        <label className="check"><input type="checkbox" checked={contour} onChange={(event) => setContour(event.target.checked)} /> Contour matching</label>
         <label className="check"><input type="checkbox" checked={geometric} onChange={(event) => setGeometric(event.target.checked)} /> Geometric boundary fit</label>
         <button data-testid="run-estimators" disabled={props.playing || props.busy || selected().length === 0} onClick={() => props.onEstimate(selected())}>{props.busy ? 'Working…' : 'Run on frozen frame'}</button>
+        <label>Search step <input aria-label="Angular search resolution" type="number" min="0.05" max="10" step="0.05" value={props.config.searchResolutionDeg} onChange={(event) => props.onSearchResolution(Number(event.target.value))} />°</label>
       </div>
       <div className="comparison-grid" data-testid="estimator-results">
         {props.sensors.flatMap((sensor) => (props.estimates[sensor.instanceId]?.results ?? []).map((result) => (
@@ -63,7 +66,7 @@ function EstimateCard({ sensor, frame, result, config }: { sensor: PlacedSensor,
   }
   return (
     <article className="estimate-card">
-      <header><div><strong>{sensor.name}</strong><small>{result.estimator === 'geometric' ? 'Geometric boundary fit' : 'Contour baseline'}</small></div><span className={result.accepted ? 'status accepted' : 'status rejected'}>{result.accepted ? 'Accepted' : 'Rejected'}</span></header>
+      <header><div><strong>{sensor.name}</strong><small>{result.estimator === 'geometric' ? 'Geometric boundary fit' : 'Contour matching'}</small></div><span className={result.accepted ? 'status accepted' : 'status rejected'}>{result.accepted ? 'Accepted' : 'Rejected'}</span></header>
       {result.accepted ? <div className="result-strip"><span>Recovered <strong>{result.angleDeg?.toFixed(3)}°</strong></span><span>True <strong>{result.trueAngleDeg.toFixed(3)}°</strong></span><span>Signed error <strong>{result.signedErrorDeg?.toFixed(3)}°</strong></span><span>Time equivalent <strong>{result.timingErrorS === null ? 'undefined at 0 rpm' : `${((result.timingErrorS ?? 0) * 1000).toFixed(2)} ms`}</strong></span>{result.estimator === 'geometric' && <span>Local uncertainty <strong>{result.uncertaintyDeg?.toExponential(2)}°</strong></span>}</div> : <div className="rejection">{result.reason}</div>}
       <canvas className="estimate-plot" ref={plot} />
       {result.costs && <><small className="plot-label">Cost over trial orientation</small><canvas className="cost-plot" ref={cost} /></>}
@@ -86,7 +89,7 @@ function SweepPlot({ records }: { records: SweepRecord[] }) {
   const accepted = records.filter((row) => row.accepted && row.errorDeg !== null)
   if (!accepted.length) return <div className="rejection">All acquisitions rejected.</div>
   const max = Math.max(1, ...accepted.map((row) => Math.abs(row.errorDeg ?? 0)))
-  return <svg className="sweep-plot" viewBox="0 0 700 190" role="img" aria-label="Signed error against true angle"><line x1="35" y1="95" x2="690" y2="95" stroke="#9ca9ac"/><line x1="35" y1="10" x2="35" y2="180" stroke="#9ca9ac"/>{accepted.map((row, index) => <circle key={index} cx={35 + row.trueAngleDeg / 360 * 655} cy={95 - (row.errorDeg ?? 0) / max * 75} r="2" fill="#176b75" opacity=".6"/>)}<text x="350" y="188" textAnchor="middle">True angle (°)</text><text x="8" y="100" transform="rotate(-90 8 100)" textAnchor="middle">Signed error (°)</text></svg>
+  return <svg className="sweep-plot" viewBox="0 0 700 190" role="img" aria-label="Signed error against true angle"><line x1="35" y1="95" x2="690" y2="95" stroke="#9ca9ac"/><line x1="35" y1="10" x2="35" y2="180" stroke="#9ca9ac"/>{accepted.map((row, index) => { const gross = row.estimator === 'contour' && Math.abs(row.errorDeg ?? 0) > 90; return <circle data-gross-error={gross || undefined} key={index} cx={35 + row.trueAngleDeg / 360 * 655} cy={95 - (row.errorDeg ?? 0) / max * 75} r={gross ? 4 : 2} fill={gross ? '#b84f45' : '#176b75'} opacity={gross ? 1 : .6}/> })}<text x="350" y="188" textAnchor="middle">True angle (°)</text><text x="8" y="100" transform="rotate(-90 8 100)" textAnchor="middle">Signed error (°)</text></svg>
 }
 
 function download(name: string, content: string, type: string) {
@@ -108,12 +111,12 @@ function ExportBar({ config, records, onImport }: { config: SimulationConfig, re
   return (
     <div className="export-bar">
       <button disabled={!records.length} onClick={exportCsv}>Export sweep CSV</button>
-      <button onClick={() => download('rotating-target-configuration.json', JSON.stringify(config, null, 2), 'application/json')}>Export configuration JSON</button>
+      <button onClick={() => download('rotating-target-configuration.json', serialiseConfiguration(config), 'application/json')}>Export configuration JSON</button>
       <button onClick={() => input.current?.click()}>Import configuration</button>
       <input ref={input} hidden type="file" accept="application/json" onChange={async (event) => {
         const file = event.target.files?.[0]
         if (!file) return
-        try { onImport(JSON.parse(await file.text()) as SimulationConfig) } catch { alert('Configuration JSON is invalid.') }
+        try { onImport(parseConfiguration(await file.text())) } catch { alert('Configuration JSON is invalid.') }
       }} />
     </div>
   )

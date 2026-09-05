@@ -1,88 +1,88 @@
 # Validation report
 
-Validation was run on 6 September 2026 with a clean `npm ci` installation. Expected values follow the stated equations and geometry.
+Validated on 6 September 2026. Sampling is derived from scan geometry: no working-band sample count, ring count or target-span fraction is stored as a sensor constant. Counts below are outputs obtained by intersecting generated rays with the target plane.
 
 ## Geometry and mechanics
 
 | Check | Expected | Actual | Result |
 | --- | ---: | ---: | :---: |
-| C7 angular sensitivity | 6.09 × 10⁶ mm³ | 6.090667 × 10⁶ mm³ | Pass |
-| C10 angular sensitivity | 11.60 × 10⁶ mm³ | 11.598000 × 10⁶ mm³ | Pass |
-| C11 angular sensitivity | 17.11 × 10⁶ mm³ | 17.105333 × 10⁶ mm³ | Pass |
-| C7 → C10 dispersion reduction | 28% | 27.533% | Pass |
-| C7 → C11 dispersion reduction | 40% | 40.329% | Pass |
-| C10 → C11 dispersion reduction | 18% | 17.657% | Pass |
-| C7 aperture area | 21,782 mm² | 21,781.709 mm² | Pass |
-| C10 aperture area | 29,221 mm² | 29,221.175 mm² | Pass |
-| C11 aperture area | 36,661 mm² | 36,660.641 mm² | Pass |
-| C11 centre-of-mass eccentricity | 21.63 mm | 21.628 mm | Pass |
-| Minimum thickness for 160 mm unsupported span | 2.73 mm | 2.7275 mm | Pass |
-| Bending stress, 160 mm span and 3 mm thickness | 0.68 MPa | 0.6781 MPa | Pass |
+| Single-aperture sensitivity | 6.09 × 10⁶ mm³ | 6.090667 × 10⁶ mm³ | Pass |
+| Dual-aperture sensitivity | 11.60 × 10⁶ mm³ | 11.598000 × 10⁶ mm³ | Pass |
+| Triple-aperture sensitivity | 17.11 × 10⁶ mm³ | 17.105333 × 10⁶ mm³ | Pass |
+| Sensitivity dispersion reductions | 28%, 40%, 18% | 27.533%, 40.329%, 17.657% | Pass |
+| Aperture areas | 21,782; 29,221; 36,661 mm² | 21,781.709; 29,221.175; 36,660.641 mm² | Pass |
+| Triple-aperture eccentricity | 21.63 mm | 21.628 mm | Pass |
+| Minimum plate thickness | 2.73 mm | 2.7275 mm | Pass |
+| Bending stress | 0.68 MPa | 0.6781 MPa | Pass |
+| Five minimum stand-offs | 1.31, 1.09, 1.04, 1.82, 0.61 m | 1.3101, 1.0868, 1.0377, 1.8158, 0.6129 m | Pass |
 
-Applying the annular-sector centroid equation to all three apertures, combining their vector moments, and dividing by the remaining plate area gives 21.628 mm. The earlier 20.4 mm reference was inconsistent with that equation and geometry, so the analytical result is used.
+## Scan-geometry properties
 
-The thickness specification names `R = 210 mm`, while its expected 2.73 mm result is obtained by using the unsupported radial span `L = R − hub radius = 160 mm`. The implementation explicitly uses that unsupported span.
-
-## Field of view
-
-| Minimum FOV | Expected stand-off | Actual stand-off | Result |
-| ---: | ---: | ---: | :---: |
-| 20.0° | 1.31 m | 1.3101 m | Pass |
-| 24.0° | 1.09 m | 1.0868 m | Pass |
-| 25.1° | 1.04 m | 1.0377 m | Pass |
-| 14.5° | 1.82 m | 1.8158 m | Pass |
-| 41.3° | 0.61 m | 0.6129 m | Pass |
-
-All results use `(R / tan(min_FOV / 2)) × 1.1` with `R = 0.210 m`.
-
-## Sampling
-
-| Configuration | Expected working-band samples | Actual | Difference | Result |
-| --- | ---: | ---: | ---: | :---: |
-| Velodyne Puck Hi-Res, 1.4 m | ≈862 and 12 rings | 862 and 12 rings | 0.00% | Pass |
-| Livox Avia, 1.0 m | ≈4,107 | 4,107 | 0.00% | Pass |
-| Hesai FT120, 1.0 m | ≈488 | 488 | 0.00% | Pass |
-| FLIR Blackfly S, 1.0 m | ≈87,264 | 87,264 | 0.00% | Pass |
-| Thermal 640 × 512, 1.0 m | ≈51,188 | 51,188 | 0.00% | Pass |
-| NIR 1280 × 1024, 1.0 m | ≈204,748 | 204,748 | 0.00% | Pass |
-
-The shared sensor schema stores each built-in's nominal C10 working-band density as calibration metadata. The sampler scales that density for target working-band area, stand-off, and camera resolution before generating double-precision analytic rays.
-
-## Consistency and behaviour
-
-| Check | Expected | Actual | Result |
-| --- | --- | --- | :---: |
-| Camera 2× downsample in each dimension | ≈4× fewer band samples | 4.000× fewer | Pass |
-| Thermal/NIR target height fraction | Both ≈51% | 0.510 / 0.510 | Pass |
-| NIR/Thermal band-count ratio | ≈4× | 3.9999× | Pass |
-| Every sample has an observation time | One time per sample; Avia span 0.1 s | Full typed array; 0.000–0.100 s | Pass |
-| Dense instantaneous error approaches zero | Dense no worse than sparse and <0.2° | sparse 0.0336°, dense 0.0336° | Pass |
-| Instantaneous full-revolution tracking | Well under 1° | maximum 0.1104° | Pass |
-| Contour estimator on LSLiDAR C4 | 100% rejection | Rejected: `insufficient boundary support` | Pass |
-| Contour estimator on FLIR | Accepted, error <0.1° | Accepted, −0.00088° | Pass |
-| Geometric estimator on LSLiDAR C4 | Accepted | Accepted, −0.3827° | Pass |
-| Blickfeld 300-frame sweep | Non-zero, non-total rejection | 48/300 rejected (16.0%) | Pass |
-| Rolling-shutter error increases with rpm | Error at 15 RPM > error at 2 RPM | 0.8961° > 0.0439° | Pass |
-| Fixed 2° offset time equivalent falls with rpm | 10 RPM value < 5 RPM value | 33.33 ms < 66.67 ms | Pass |
-| Window-start versus exposure-midpoint offset | ≈50 ms | 48.30 ms | Pass |
-
-## Build and browser quality
-
-| Command or check | Actual | Result |
+| Check | Actual | Result |
 | --- | --- | :---: |
-| `npm ci` | Clean install completed | Pass |
-| `npm run typecheck` | TypeScript strict build completed without diagnostics | Pass |
-| `npm run lint` | Completed with zero warnings | Pass |
-| `npm test` | 32 passed out of 32 assertions | Pass |
-| `GITHUB_ACTIONS=true npm run build` | Production bundle built; assets use repository subpath | Pass |
-| Five panels render in a headless browser | 5/5 panels found | Pass |
-| Rotation runs | Scrub value changed after 1.2 seconds | Pass |
-| Both estimators produce output | Accepted result rendered | Pass |
-| Production build served from repository subpath | `/rotating-target-calibration-studio/` loaded | Pass |
-| Three active sensors for 60 seconds | No browser console errors | Pass |
+| All seven architectures generate and classify rays | Non-empty band for every representative | Pass |
+| All 17 built-ins load, fit at default stand-off and generate frames | 17/17 | Pass |
+| Angular target extent at doubled stand-off | 1.979–2.000× reduction | Pass |
+| Puck, array, rotating mirror and camera area scaling | 3.875–4.008× fewer band rays | Pass |
+| Prism area scaling | 2.223× fewer | **Does not meet ≈4×** |
+| Micro-mirror area scaling | 1.856× fewer | **Does not meet ≈4×** |
+| Single-plane scaling | 2.000× fewer | **Does not meet ≈4×; expected for a line scan** |
+| Direct ring enumeration | 4, 16 and 32-channel cases match | Pass |
+| 2× camera downsampling in both dimensions | ≈4× fewer counted rays | Pass |
+| Aperture/background classification invariants | Checked for every ray | Pass |
+| Solid/open target ray-count invariance | Counts identical | Pass |
+| Consecutive prism positions | Different | Pass |
+| Consecutive fixed-array positions | Identical | Pass |
 
-The build emits a non-fatal bundle-size warning because Three.js and the interactive scene are shipped in the main client bundle. No runtime or console error was observed. The complete browser suite passed both tests.
+The requested universal 4× band-count rule is not a geometry invariant for finite non-uniform scans. The prism and micro-mirror illuminate different portions of their patterns within a finite window, and a one-dimensional scanner scales with target diameter rather than area. These discrepancies are reported rather than tuning scan parameters to force a ratio.
 
-## Overall status
+## Informational band counts
 
-All 32 unit assertions and all static, production-build, sampling, estimator-behaviour, subpath, and browser checks pass.
+| Built-in | Band rays | Built-in | Band rays |
+| --- | ---: | --- | ---: |
+| LSLiDAR C4 | 222 | LSLiDAR C8 | 552 |
+| Velodyne Puck Hi-Res | 888 | Velodyne HDL-32E | 1,742 |
+| Ouster OS1-64 | 3,246 | Ouster OS1-128 | 6,526 |
+| Livox Avia | 16,934 | Livox Horizon | 21,805 |
+| Livox Tele-15 | 20,110 | Blickfeld Cube 1 | 1,435 |
+| Hesai FT120 | 600 | Livox Mid-360 | 372 |
+| Single-plane scanner | 180 | FLIR Blackfly S | 103,276 |
+| FLIR rolling readout | 103,276 | Thermal 640 × 512 | 50,544 |
+| Near-infrared 905 nm | 202,052 |  |  |
+
+These values are not assertions and are not used as sampler inputs.
+
+## Estimation and integration
+
+| Check | Actual | Result |
+| --- | --- | :---: |
+| Genuine sparse/dense camera comparison | 1,300/8,144 rays; 0.0596°/0.0177° mean error | Pass |
+| Prism contour sweep, 300 acquisitions | median 1.50°, mean 12.12°, 18 errors above 90° | Pass |
+| Micro-mirror sweep, 300 acquisitions | 119 rejections | Pass |
+| Single-plane geometric rejection | `insufficient two-dimensional boundary coverage` | Pass |
+| Both estimators on every architecture | No throw for 7/7 | Pass |
+| Four timestamp conventions | Four distinct reported times | Pass |
+| Custom sensor round-trip | Rays and classes identical | Pass |
+| Configuration JSON round-trip | State identical | Pass |
+| Six scenarios load and generate | 6/6 | Pass |
+| Four aperture edge cases | 4/4 | Pass |
+| Acceptance boundaries | 49/50 samples and 2/3 class samples distinguished | Pass |
+| Geometry edits | Signature and vertex fingerprint change | Pass |
+| 100 geometry rebuilds | 200 geometry and 400 material instances disposed | Pass |
+| Hub consistency | 3D, preview and sensor conversions agree for 20, 50 and 95 mm | Pass |
+
+## Build and browser status
+
+| Check | Result |
+| --- | :---: |
+| TypeScript strict typecheck | Pass |
+| ESLint with zero warnings | Pass |
+| Unit suite: 105 tests | Pass |
+| Production build | Pass |
+| Main application chunk reduced from about 1,023 kB to about 186 kB | Pass |
+| Three-dimensional renderer emitted as a lazy chunk | Pass |
+| Browser interaction, all six panels and geometry edits | 2/2 checks pass |
+| Three-sensor 60-second run without console errors | Pass; zero console errors |
+| Ten-second README demonstration capture | 50 frames, 638 × 645 px, 2.5 MB | Pass |
+
+The renderer chunk remains large when requested, but it no longer blocks the initial application bundle. The scene is deterministic and noise-free; reported estimator accuracy is an optimistic simulation bound.

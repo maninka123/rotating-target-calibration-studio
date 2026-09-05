@@ -6,8 +6,8 @@ import type { PlacedSensor, TargetConfig } from '../core/types'
 
 type Request =
   | { id: number, type: 'frame', sensor: PlacedSensor, target: TargetConfig, rpm: number, angleDeg: number, startS: number, acquisitionIndex: number }
-  | { id: number, type: 'estimate', sensor: PlacedSensor, target: TargetConfig, rpm: number, angleDeg: number, startS: number, acquisitionIndex: number, estimators: ('contour' | 'geometric')[] }
-  | { id: number, type: 'sweep', sensors: PlacedSensor[], target: TargetConfig, rpm: number, acquisitions: number, estimators: ('contour' | 'geometric')[] }
+  | { id: number, type: 'estimate', sensor: PlacedSensor, target: TargetConfig, rpm: number, angleDeg: number, startS: number, acquisitionIndex: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
+  | { id: number, type: 'sweep', sensors: PlacedSensor[], target: TargetConfig, rpm: number, acquisitions: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
 
 self.onmessage = (event: MessageEvent<Request>) => {
   const request = event.data
@@ -21,7 +21,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
       const frame = generateFrame(request.sensor, request.target, request.rpm, request.angleDeg, request.startS, request.acquisitionIndex)
       const results = request.estimators.map((estimator) => estimator === 'contour'
         ? contourEstimate(frame, request.target, request.sensor, request.rpm)
-        : geometricEstimate(frame, request.target, request.rpm))
+        : geometricEstimate(frame, request.target, request.rpm, request.searchResolutionDeg))
       self.postMessage({ id: request.id, type: 'estimate', frame, results })
       return
     }
@@ -31,6 +31,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
       request.rpm,
       request.acquisitions,
       request.estimators,
+      request.searchResolutionDeg,
       (fraction) => self.postMessage({ id: request.id, type: 'progress', fraction }),
     )
     self.postMessage({ id: request.id, type: 'sweep', ...result })

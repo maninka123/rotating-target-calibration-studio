@@ -56,6 +56,7 @@ export const runSweep = (
   rpm: number,
   acquisitions: number,
   estimators: SweepEstimator[],
+  searchResolutionDeg = 1,
   onProgress?: (fraction: number) => void,
 ): { records: SweepRecord[], summaries: SweepSummary[] } => {
   const records: SweepRecord[] = []
@@ -65,7 +66,7 @@ export const runSweep = (
       const frame = generateFrame(sensor, target, rpm, 0, start, acquisition)
       for (const estimator of estimators) {
         const result = estimator === 'geometric'
-          ? geometricEstimate(frame, target, rpm)
+          ? geometricEstimate(frame, target, rpm, searchResolutionDeg)
           : contourEstimate(frame, target, sensor, rpm)
         records.push({
           acquisition,
