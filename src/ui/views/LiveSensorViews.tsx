@@ -24,13 +24,21 @@ export function LiveSensorViews({ sensors, frames, target, playing }: Props) {
 function SensorTile({ sensor, frame, target, playing }: { sensor: PlacedSensor, frame?: SampleFrame, target: TargetConfig, playing: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
-    if (canvas.current && frame) drawSamples(canvas.current, frame, target)
+    const element = canvas.current
+    if (!element) return
+    if (frame) {
+      drawSamples(element, frame, target)
+      element.dataset.acquisitionKey = JSON.stringify([frame.sensorId, frame.acquisitionIndex, frame.acquisitionStartS])
+    } else {
+      element.getContext('2d')?.clearRect(0, 0, element.width, element.height)
+      delete element.dataset.acquisitionKey
+    }
   }, [frame, target])
   const counts = frame ? classCounts(frame) : { material: 0, aperture: 0, background: 0, band: 0 }
   return (
     <article className="sensor-view">
       <header><div><strong>{sensor.name}</strong><small>{sensor.architecture === 'camera' ? 'Synthetic classified image' : 'Target-plane projection'}</small></div><span className="live-dot">{playing ? 'LIVE' : 'PAUSED'}</span></header>
-      <canvas ref={canvas} aria-label={`${sensor.name} live sensor view`} data-hub-radius-mm={target.hubRadiusMm} />
+      <canvas ref={canvas} aria-label={`${sensor.name} live sensor view`} data-sensor-id={sensor.instanceId} data-hub-radius-mm={target.hubRadiusMm} />
       <div className="tile-readouts">
         <span>Band <strong>{counts.band.toLocaleString()}</strong></span>
         <span>Material <strong>{counts.material.toLocaleString()}</strong></span>

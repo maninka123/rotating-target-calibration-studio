@@ -26,14 +26,22 @@ test('paused frames refresh, frozen estimation uses identical arrays, and edits 
       constructor(url: string | URL, options?: WorkerOptions) {
         super(url, options)
         this.addEventListener('message', (event) => {
-          if (event.data.type === 'frame') state.frames[event.data.frame.sensorId] = fingerprint(event.data.frame)
+          if (event.data.type === 'frame') {
+            const frame = event.data.frame
+            state.frames[JSON.stringify([frame.sensorId, frame.acquisitionIndex, frame.acquisitionStartS])] = fingerprint(frame)
+          }
         })
       }
       postMessage(message: unknown, transfer: Transferable[]): void
       postMessage(message: unknown, options?: StructuredSerializeOptions): void
       postMessage(message: unknown, options?: Transferable[] | StructuredSerializeOptions): void {
         const request = message as { type: string, frame?: { sensorId: string, xMm: Float64Array, yMm: Float64Array, classes: Uint8Array, observationTimeS: Float64Array } }
-        if (request.type === 'estimate' && request.frame) state.estimates.push({ matches: state.frames[request.frame.sensorId] === fingerprint(request.frame) })
+        if (request.type === 'estimate' && request.frame) {
+          const canvas = [...document.querySelectorAll<HTMLCanvasElement>('.sensor-view canvas')].find((element) => element.dataset.sensorId === request.frame!.sensorId)
+          // Only a completed draw identifies the displayed acquisition. Later
+          // in-flight replies can be deliberately discarded after pausing.
+          state.estimates.push({ matches: state.frames[canvas?.dataset.acquisitionKey ?? ''] === fingerprint(request.frame) })
+        }
         if (Array.isArray(options)) super.postMessage(message, options)
         else super.postMessage(message, options)
       }
@@ -46,6 +54,7 @@ test('paused frames refresh, frozen estimation uses identical arrays, and edits 
   await expect(page.getByTestId('run-estimators')).toBeEnabled()
   await page.getByTestId('run-estimators').click()
   await expect(page.locator('.estimate-card')).toHaveCount(2, { timeout: 30_000 })
+  expect(await page.evaluate(() => (window as unknown as { __frameAudit: { estimates: { matches: boolean }[] } }).__frameAudit.estimates.length)).toBe(2)
   expect(await page.evaluate(() => (window as unknown as { __frameAudit: { estimates: { matches: boolean }[] } }).__frameAudit.estimates.every((result) => result.matches))).toBe(true)
   const band = page.locator('.sensor-view').first().locator('.tile-readouts strong').first()
   const before = await band.innerText()

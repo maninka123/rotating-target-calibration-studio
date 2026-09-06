@@ -102,6 +102,8 @@ The browser suite includes exact worker-frame comparison, paused refresh, stale-
 
 The first hosted CI run passed all unit/build checks and six of seven browser tests. Its dense-camera result assertion timed out at the implicit five-second limit. That asynchronous assertion now uses the same 30-second allowance as the other estimator-output assertion; the expected count and all numerical expectations are unchanged. Hosted rerun status is available in the repository's CI history.
 
+The next hosted run exposed a race in the frozen-frame test's instrumentation: it used the latest worker reply even when that reply was discarded after pausing. The canvas now records the identity of the acquisition actually drawn, and the test compares its complete arrays with the estimator input. Empty/invalidated frames also clear their canvases while loading. The equality assertion is retained.
+
 ## Limits of this verification
 
 - The 100-rebuild unit test verifies disposal calls. It does not measure GPU-memory growth; no memory benchmark is claimed.
