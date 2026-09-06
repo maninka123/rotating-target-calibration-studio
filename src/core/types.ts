@@ -39,10 +39,11 @@ export interface SensorDefinition {
   name: string
   architecture: Architecture
   standOffM: number
-  horizontalFovDeg: number
-  verticalFovDeg: number
+  horizontalFovDeg?: number
+  verticalFovDeg?: number
   elevationLowerDeg?: number
   elevationUpperDeg?: number
+  pitchDeg?: number
   timestampConvention: TimestampConvention
   integrationTimeS: number
   readoutTimeS: number
@@ -94,15 +95,46 @@ export interface SampleFrame {
 export interface EstimateResult {
   estimator: 'contour' | 'geometric'
   accepted: boolean
-  reason?: 'insufficient boundary support' | 'correspondence failure' | 'insufficient two-dimensional boundary coverage' | 'fewer than 50 samples in working band' | 'fewer than 3 samples in each class' | 'minimum cost above threshold'
+  reason?: 'insufficient boundary support' | 'correspondence failure' | 'insufficient two-dimensional boundary coverage' | 'fewer than 50 samples in working band' | 'fewer than 3 samples in each class' | 'minimum cost above threshold' | 'orientation ambiguous'
   angleDeg?: number
   trueAngleDeg: number
   signedErrorDeg?: number
   timingErrorS?: number | null
-  uncertaintyDeg?: number
+  localCurvatureProxy?: number
   minimumCost?: number
   costAnglesDeg?: Float64Array
   costs?: Float64Array
+  ambiguityOrder?: number
+}
+
+export interface EstimatorSettings {
+  searchResolutionDeg: number
+  twoDimensionalCoverage: boolean
+  ringCount: number
+}
+
+export interface EstimatorInput {
+  xMm: Float64Array
+  yMm: Float64Array
+  radiusMm: Float64Array
+  phiRad: Float64Array
+  observationTimeS: Float64Array
+  classes: Uint8Array
+  inWorkingBand: Uint8Array
+  target: TargetConfig
+  settings: EstimatorSettings
+}
+
+export interface EstimatorOutput {
+  estimator: 'contour' | 'geometric'
+  accepted: boolean
+  reason?: EstimateResult['reason']
+  angleDeg?: number
+  localCurvatureProxy?: number
+  minimumCost?: number
+  costAnglesDeg?: Float64Array
+  costs?: Float64Array
+  ambiguityOrder?: number
 }
 
 export interface SimulationConfig {

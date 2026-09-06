@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { apertureContains, DEG, minimumStandOffM, targetFitsElevationLimits } from '../core/geometry'
+import { apertureContains, asymmetricCoverage, DEG, minimumStandOffM, targetFitsElevationLimits } from '../core/geometry'
+import { sensorFovDeg } from '../core/optics'
 import { DUAL_APERTURE } from '../core/presets'
 import { channelElevationsDeg, classCounts, generateFrame, rotatingHeadBandElevationsDeg, rotatingHeadBandRingCount, rotatingHeadRingSampleCounts, samplesAcrossTarget } from '../core/sampling'
 import type { Architecture, PlacedSensor } from '../core/types'
@@ -23,7 +24,7 @@ describe('scan geometry', () => {
   it.each(SENSOR_LIBRARY.map((sensor) => [sensor.id] as const))('%s loads, has the expected FOV status, and produces a frame', (id) => {
     const sensor = placed(id)
     if (sensor.id === 'livox-mid360') expect(targetFitsElevationLimits(DUAL_APERTURE, sensor.standOffM, sensor.elevationLowerDeg!, sensor.elevationUpperDeg!)).toBe(false)
-    else expect(sensor.standOffM + 0.005).toBeGreaterThanOrEqual(minimumStandOffM(210, sensor.horizontalFovDeg, sensor.verticalFovDeg))
+    else { const fov = sensorFovDeg(sensor); expect(sensor.standOffM + 0.005).toBeGreaterThanOrEqual(minimumStandOffM(210, fov.horizontalDeg, fov.verticalDeg)) }
     expect(generateFrame(sensor, DUAL_APERTURE, 0, 0, 0).classes.length).toBeGreaterThan(0)
   })
 
@@ -79,6 +80,33 @@ describe('scan geometry', () => {
     const nirFraction = samplesAcrossTarget(placed('nir-905'), DUAL_APERTURE) / 1024
     expect(thermalFraction).toBeCloseTo(0.51, 2)
     expect(nirFraction).toBeCloseTo(thermalFraction, 3)
+  })
+
+  it('derives every camera field of view from optics without stored FOV values', () => {
+    for (const sensor of SENSOR_LIBRARY.filter((item) => item.architecture === 'camera')) {
+      expect(sensor.horizontalFovDeg).toBeUndefined()
+      expect(sensor.verticalFovDeg).toBeUndefined()
+      const fov = sensorFovDeg(sensor)
+      expect(fov.horizontalDeg).toBeGreaterThan(0)
+      expect(fov.verticalDeg).toBeGreaterThan(0)
+    }
+    const thermal = sensorFovDeg(byId('thermal-640'))
+    expect(thermal.horizontalDeg).toBeCloseTo(54.5, 1)
+    expect(thermal.verticalDeg).toBeCloseTo(44.8, 1)
+  })
+
+  it('camera timestamp metadata does not depend on the target crop', () => {
+    const sensor = placed('flir-rolling')
+    const small = generateFrame(sensor, { ...DUAL_APERTURE, outerDiameterMm: 200 }, 0, 0, 10)
+    const large = generateFrame(sensor, { ...DUAL_APERTURE, outerDiameterMm: 600 }, 0, 0, 10)
+    expect(small.reportedTimeS).toBe(large.reportedTimeS)
+  })
+
+  it('mean observation time averages only working-band samples', () => {
+    const frame = generateFrame(placed('flir-rolling'), DUAL_APERTURE, 0, 0, 10)
+    let sum = 0; let count = 0
+    for (let index = 0; index < frame.inWorkingBand.length; index += 1) if (frame.inWorkingBand[index]) { sum += frame.observationTimeS[index]; count += 1 }
+    expect(frame.meanObservationTimeS).toBeCloseTo(sum / count, 10)
   })
 
   it('classifies aperture rays against geometry at each observation time', () => {
@@ -139,7 +167,7 @@ describe('scan geometry', () => {
       for (let index = 0; index < frame.xMm.length; index += 1) {
         const xAngle = Math.atan(frame.xMm[index] / (sensor.standOffM * 1000)) / DEG
         const yAngle = Math.atan(frame.yMm[index] / (sensor.standOffM * 1000)) / DEG
-        bins.add(`${Math.floor(xAngle + sensor.horizontalFovDeg / 2)}:${Math.floor(yAngle + sensor.verticalFovDeg / 2)}`)
+        bins.add(`${Math.floor(xAngle + sensor.horizontalFovDeg! / 2)}:${Math.floor(yAngle + sensor.verticalFovDeg! / 2)}`)
       }
       return bins.size
     }
@@ -153,8 +181,8 @@ describe('scan geometry', () => {
     let extremes = 0
     let corner = 0
     for (let index = 0; index < frame.xMm.length; index += 1) {
-      const horizontal = Math.abs(Math.atan(frame.xMm[index] / 1000) / DEG) / (sensor.horizontalFovDeg / 2)
-      const vertical = Math.abs(Math.atan(frame.yMm[index] / 1000) / DEG) / (sensor.verticalFovDeg / 2)
+      const horizontal = Math.abs(Math.atan(frame.xMm[index] / 1000) / DEG) / (sensor.horizontalFovDeg! / 2)
+      const vertical = Math.abs(Math.atan(frame.yMm[index] / 1000) / DEG) / (sensor.verticalFovDeg! / 2)
       if (vertical < 0.1) midline += 1
       if (vertical > 0.8) extremes += 1
       if (horizontal > 0.98 && vertical > 0.98) corner += 1
@@ -184,6 +212,26 @@ describe('scan geometry', () => {
     const second = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0, 1)
     const changed = first.yMm.some((value, index) => Number.isFinite(value) && Number.isFinite(second.yMm[index]) && Math.abs(value - second.yMm[index]) > 1e-6)
     expect(changed).toBe(true)
+  })
+
+  it('Mid-360 pitch centres asymmetric coverage on the target', () => {
+    const level = placed('livox-mid360', { pitchDeg: 0 })
+    const centred = placed('livox-mid360', { pitchDeg: -22.5 })
+    const levelCoverage = asymmetricCoverage(DUAL_APERTURE, 1, -7, 52, 0)
+    const centredCoverage = asymmetricCoverage(DUAL_APERTURE, 1, -7, 52, -22.5)
+    expect(levelCoverage.full).toBe(false)
+    expect(levelCoverage.clippedFraction).toBeCloseTo(0.205, 1)
+    expect(levelCoverage.lowerHalfClippedFraction).toBeCloseTo(0.41, 1)
+    expect(levelCoverage.minimumStandOffM).toBeCloseTo(1.881, 2)
+    expect(centredCoverage.full).toBe(true)
+    expect(centredCoverage.lowerDeg).toBe(-29.5)
+    expect(centredCoverage.upperDeg).toBe(29.5)
+    expect(centredCoverage.minimumStandOffM).toBeCloseTo(0.408, 2)
+    const levelFrame = generateFrame(level, DUAL_APERTURE, 0, 0, 0)
+    const centredFrame = generateFrame(centred, DUAL_APERTURE, 0, 0, 0)
+    expect(Math.min(...levelFrame.yMm.filter(Number.isFinite))).toBeGreaterThanOrEqual(1000 * Math.tan(-7 * DEG) - 1e-6)
+    expect(Math.min(...centredFrame.yMm.filter((value, index) => Number.isFinite(value) && centredFrame.radiusMm[index] <= 210))).toBeLessThan(-190)
+    expect(Math.max(...centredFrame.yMm.filter((value, index) => Number.isFinite(value) && centredFrame.radiusMm[index] <= 210))).toBeGreaterThan(190)
   })
 
   it('solid-state acquisitions have identical fixed positions', () => {

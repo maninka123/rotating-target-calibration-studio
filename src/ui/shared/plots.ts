@@ -51,7 +51,7 @@ export const drawSamples = (
   const colours = { contour: '#c94b43', geometric: '#176b75' }
   let legendX = 12
   if (truth) {
-    context.font = 'bold 11px Inter, sans-serif'; context.fillStyle = '#20282a'; context.fillText('Actual template', legendX, 18); legendX += 104
+    context.font = 'bold 11px Inter, sans-serif'; context.fillStyle = '#20282a'; context.fillText('Truth at reported timestamp', legendX, 18); legendX += 164
   }
   for (const result of estimates) if (result.accepted && result.angleDeg !== undefined) {
     const colour = colours[result.estimator]
@@ -110,7 +110,8 @@ export const drawCost = (canvas: HTMLCanvasElement, result: EstimateResult): voi
   context.lineWidth = 2.5
   context.beginPath()
   result.costs.forEach((cost, index) => {
-    const x = 30 + index / 359 * (width - 42)
+    const angle = result.costAnglesDeg?.[index] ?? index * 360 / result.costs!.length
+    const x = 30 + angle / 360 * (width - 42)
     const y = height - 22 - cost / maxCost * (height - 36)
     if (index === 0) context.moveTo(x, y)
     else context.lineTo(x, y)

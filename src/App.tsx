@@ -3,7 +3,7 @@ import { DUAL_APERTURE } from './core/presets'
 import { scenarioConfiguration, type ScenarioName } from './core/scenarios'
 import { parseConfiguration } from './core/config'
 import type { EstimateResult, PlacedSensor, SampleFrame, SimulationConfig, SweepRecord, TargetConfig } from './core/types'
-import type { SweepSummary } from './core/sweep'
+import type { PairwiseOffset, SweepSummary } from './core/sweep'
 import { byId } from './sensors/library'
 import { ScenePanel } from './ui/scene/ScenePanel'
 import { ResultsPanel } from './ui/results/ResultsPanel'
@@ -36,6 +36,7 @@ export default function App() {
   const [sweepProgress, setSweepProgress] = useState(0)
   const [sweepRecords, setSweepRecords] = useState<SweepRecord[]>([])
   const [sweepSummaries, setSweepSummaries] = useState<SweepSummary[]>([])
+  const [pairwiseOffsets, setPairwiseOffsets] = useState<PairwiseOffset[]>([])
   const [noticeOpen, setNoticeOpen] = useState(() => {
     try { return localStorage.getItem(NOTICE_STORAGE_KEY) !== 'true' } catch { return true }
   })
@@ -43,7 +44,9 @@ export default function App() {
   const sweepWorker = useMemo(() => new SimulationWorkerClient(), [])
   const aboutTrigger = useRef<HTMLAnchorElement>(null)
   const acquisition = useRef(0)
-  const startTime = useRef(performance.now())
+  const clockOrigin = useRef({ timeMs: performance.now(), angleDeg: 0 })
+
+  const resetClock = useCallback((angleDeg: number) => { clockOrigin.current = { timeMs: performance.now(), angleDeg } }, [])
 
   useEffect(() => () => { worker.terminate(); sweepWorker.terminate() }, [worker, sweepWorker])
 
@@ -54,12 +57,13 @@ export default function App() {
     const tick = async () => {
       if (pending || !active) return
       pending = true
-      const elapsed = (performance.now() - startTime.current) / 1000
-      setConfig((current) => ({ ...current, angleDeg: (elapsed * 6 * current.rpm) % 360 }))
+      const elapsed = (performance.now() - clockOrigin.current.timeMs) / 1000
+      const liveAngle = (clockOrigin.current.angleDeg + elapsed * 6 * config.rpm) % 360
+      setConfig((current) => ({ ...current, angleDeg: liveAngle }))
       try {
         const replies = await Promise.all(config.sensors.map((sensor) => worker.request({
           type: 'frame', sensor, target: config.target, rpm: config.rpm,
-          angleDeg: (elapsed * 6 * config.rpm) % 360, startS: elapsed,
+          angleDeg: liveAngle, startS: elapsed,
           acquisitionIndex: acquisition.current,
         })))
         if (active) {
@@ -77,7 +81,10 @@ export default function App() {
     return () => { active = false; window.clearInterval(timer) }
   }, [config.playing, config.rpm, config.sensors, config.target, worker])
 
-  const set = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig((current) => ({ ...current, [key]: value }))
+  const set = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig((current) => {
+    if (key === 'rpm' || key === 'playing' || key === 'angleDeg') resetClock(key === 'angleDeg' ? Number(value) : current.angleDeg)
+    return { ...current, [key]: value }
+  })
 
   const runEstimate = useCallback(async (estimators: ('contour' | 'geometric')[]) => {
     setBusy(true)
@@ -98,31 +105,38 @@ export default function App() {
     } finally { setBusy(false) }
   }, [config, worker])
 
-  const runSweepMode = useCallback(async (count: number, estimators: ('contour' | 'geometric')[]) => {
+  const runSweepMode = useCallback(async (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number }) => {
     setBusy(true)
     setSweepProgress(0.001)
     try {
-      const reply = await sweepWorker.request({ type: 'sweep', sensors: config.sensors, target: config.target, rpm: config.rpm, acquisitions: count, estimators, searchResolutionDeg: config.searchResolutionDeg }, setSweepProgress)
+      const reply = await sweepWorker.request({ type: 'sweep', sensors: config.sensors, target: config.target, rpm: options.rpm, rotations: options.rotations, acquisitions: count, estimators, searchResolutionDeg: config.searchResolutionDeg }, setSweepProgress)
       const records = reply.records as SweepRecord[]
       const summaries = reply.summaries as SweepSummary[]
+      const offsets = reply.pairwiseOffsets as PairwiseOffset[]
       setSweepRecords(records)
       setSweepSummaries(summaries)
+      setPairwiseOffsets(offsets)
       setSweepProgress(1)
       return { records, summaries }
     } finally { setBusy(false) }
   }, [config, sweepWorker])
 
   const applyScenario = (name: ScenarioName) => {
-    setConfig(scenarioConfiguration(name))
+    const next = scenarioConfiguration(name)
+    resetClock(next.angleDeg)
+    setConfig(next)
     setFrames({})
     setEstimates({})
     setSweepRecords([])
     setSweepSummaries([])
+    setPairwiseOffsets([])
   }
 
   const importConfig = (incoming: SimulationConfig) => {
     if (!incoming.target || !Array.isArray(incoming.sensors) || incoming.sensors.length < 1 || incoming.sensors.length > 3) throw new Error('Invalid configuration')
-    setConfig(parseConfiguration(JSON.stringify(incoming)))
+    const next = parseConfiguration(JSON.stringify(incoming))
+    resetClock(next.angleDeg)
+    setConfig(next)
   }
 
   const closeNotice = useCallback(() => {
@@ -164,7 +178,7 @@ export default function App() {
         <ScenePanel target={config.target} sensors={config.sensors} rpm={config.rpm} angleDeg={config.angleDeg} playing={config.playing} showRays={config.showRays} onRpm={(rpm) => set('rpm', rpm)} onAngle={(angle) => set('angleDeg', angle)} onPlaying={(playing) => set('playing', playing)} onShowRays={(show) => set('showRays', show)} />
         <RotationPanel target={config.target} angleDeg={config.angleDeg} playing={config.playing} rpm={config.rpm} />
         <LiveSensorViews sensors={config.sensors} frames={frames} target={config.target} />
-        <ResultsPanel playing={config.playing} sensors={config.sensors} config={config} estimates={estimates} onEstimate={runEstimate} busy={busy} sweepProgress={sweepProgress} sweepRecords={sweepRecords} sweepSummaries={sweepSummaries} onSweep={runSweepMode} onImport={importConfig} onSearchResolution={(value) => set('searchResolutionDeg', value)} />
+        <ResultsPanel playing={config.playing} sensors={config.sensors} config={config} estimates={estimates} onEstimate={runEstimate} busy={busy} sweepProgress={sweepProgress} sweepRecords={sweepRecords} sweepSummaries={sweepSummaries} pairwiseOffsets={pairwiseOffsets} onSweep={runSweepMode} onImport={importConfig} onSearchResolution={(value) => set('searchResolutionDeg', value)} />
       </main>
       <footer>All calculations run locally. No telemetry, backend, ROS runtime, or external service is used.</footer>
       <FirstLoadNotice open={noticeOpen} onClose={closeNotice} />

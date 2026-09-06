@@ -45,7 +45,7 @@ export function FirstLoadNotice({ open, onClose }: Props) {
         </svg>
         <div>
           <h2 id="work-in-progress-title">Work in progress</h2>
-          <p id="work-in-progress-body">The full simulation runs in ROS. This browser version makes it easier to reach, with idealised sampling and a noise-free scene, so results may differ.</p>
+          <p id="work-in-progress-body">This standalone browser simulation uses idealised sampling and a noise-free scene, so results may differ from physical sensors.</p>
         </div>
         <button ref={continueButton} className="notice-continue" type="button" onClick={onClose}>Continue</button>
       </div>

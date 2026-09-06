@@ -13,7 +13,7 @@ const record: SweepRecord = {
 describe('sweep output package', () => {
   it('creates a readable, timestamped folder name', () => {
     const name = sweepFolderName(scenarioConfiguration('Dense camera'), new Date('2026-09-06T04:05:06Z'))
-    expect(name).toBe('rotating-target-sweep_dual-aperture_5p0rpm_2026-09-06_04-05-06')
+    expect(name).toBe('rotating-target-sweep_dual-aperture_5p0rpm_1rev_2026-09-06_04-05-06')
   })
 
   it('serialises the documented per-acquisition CSV columns', () => {
@@ -29,7 +29,7 @@ describe('sweep output package', () => {
     }
     let created = ''
     const parent = { getDirectoryHandle: async (name: string) => { created = name; return folder } } as unknown as FileSystemDirectoryHandle
-    const summary = { sensor: 'sensor-1', estimator: 'geometric', acquisitions: 1, accepted: 1, rejectionRate: 0, maeDeg: 0.1, medianAbsDeg: 0.1, sdDeg: null, p95Deg: 0.1, recoveredOffsetMs: null, recoveredOffsetSdMs: null } satisfies SweepSummary
+    const summary = { sensor: 'sensor-1', estimator: 'geometric', acquisitions: 1, accepted: 1, rejectionRate: 0, maeDeg: 0.1, medianAbsDeg: 0.1, sdDeg: null, p95Deg: 0.1 } satisfies SweepSummary
     const config = scenarioConfiguration('Dense camera')
     await saveSweepFolder(parent, 'result-folder', config, [record], [summary])
     expect(created).toBe('result-folder')

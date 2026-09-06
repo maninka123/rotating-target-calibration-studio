@@ -20,6 +20,13 @@ export class SimulationWorkerClient {
       if (reply.type === 'error') pending.reject(new Error(String(reply.error)))
       else pending.resolve(reply)
     }
+    this.worker.onerror = (event) => {
+      const error = new Error(event.message || 'Simulation worker crashed')
+      for (const pending of this.pending.values()) pending.reject(error)
+      this.pending.clear()
+      this.worker?.terminate()
+      this.worker = undefined
+    }
     return this.worker
   }
 

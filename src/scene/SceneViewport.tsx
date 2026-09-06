@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls as ThreeOrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { PlacedSensor, TargetConfig } from '../core/types'
 import { rotatingHeadBandElevationsDeg } from '../core/sampling'
+import { sensorFovDeg } from '../core/optics'
 import { targetGeometrySignature } from '../core/viewGeometry'
 import { TargetMesh } from './TargetMesh'
 
@@ -22,8 +23,9 @@ interface Props {
 type CoverageGeometry = { lines: THREE.BufferGeometry, surface: THREE.BufferGeometry, channelLines?: THREE.BufferGeometry }
 
 const rectangularCoverage = (sensor: PlacedSensor, length: number): CoverageGeometry => {
-  const halfWidth = Math.tan(sensor.horizontalFovDeg * Math.PI / 360) * length
-  const halfHeight = Math.tan(sensor.verticalFovDeg * Math.PI / 360) * length
+  const fov = sensorFovDeg(sensor)
+  const halfWidth = Math.tan(fov.horizontalDeg * Math.PI / 360) * length
+  const halfHeight = Math.tan(fov.verticalDeg * Math.PI / 360) * length
   const origin = new THREE.Vector3()
   const corners = [new THREE.Vector3(-halfWidth, -halfHeight, -length), new THREE.Vector3(halfWidth, -halfHeight, -length), new THREE.Vector3(halfWidth, halfHeight, -length), new THREE.Vector3(-halfWidth, halfHeight, -length)]
   const linePoints: THREE.Vector3[] = []
@@ -36,8 +38,9 @@ const rectangularCoverage = (sensor: PlacedSensor, length: number): CoverageGeom
 
 const ellipticalConeCoverage = (sensor: PlacedSensor, length: number): CoverageGeometry => {
   const segments = 64
-  const rx = Math.tan(sensor.horizontalFovDeg * Math.PI / 360) * length
-  const ry = Math.tan(sensor.verticalFovDeg * Math.PI / 360) * length
+  const fov = sensorFovDeg(sensor)
+  const rx = Math.tan(fov.horizontalDeg * Math.PI / 360) * length
+  const ry = Math.tan(fov.verticalDeg * Math.PI / 360) * length
   const rim = Array.from({ length: segments }, (_, index) => new THREE.Vector3(rx * Math.cos(index / segments * Math.PI * 2), ry * Math.sin(index / segments * Math.PI * 2), -length))
   const lines: THREE.Vector3[] = []
   const triangles: THREE.Vector3[] = []
@@ -52,9 +55,10 @@ const ellipticalConeCoverage = (sensor: PlacedSensor, length: number): CoverageG
 
 const bandCoverage = (sensor: PlacedSensor, length: number, target: TargetConfig): CoverageGeometry => {
   const segments = 96
-  const lower = (sensor.elevationLowerDeg ?? -sensor.verticalFovDeg / 2) * Math.PI / 180
-  const upper = (sensor.elevationUpperDeg ?? sensor.verticalFovDeg / 2) * Math.PI / 180
-  const azimuthSpan = (sensor.architecture === 'rotating-head' ? 360 : sensor.horizontalFovDeg) * Math.PI / 180
+  const fov = sensorFovDeg(sensor)
+  const lower = ((sensor.elevationLowerDeg ?? -fov.verticalDeg / 2) + (sensor.pitchDeg ?? 0)) * Math.PI / 180
+  const upper = ((sensor.elevationUpperDeg ?? fov.verticalDeg / 2) + (sensor.pitchDeg ?? 0)) * Math.PI / 180
+  const azimuthSpan = (sensor.architecture === 'rotating-head' ? 360 : fov.horizontalDeg) * Math.PI / 180
   const azimuthStart = -azimuthSpan / 2
   const point = (azimuth: number, elevation: number) => new THREE.Vector3(
     length * Math.cos(elevation) * Math.sin(azimuth),
@@ -81,8 +85,9 @@ const bandCoverage = (sensor: PlacedSensor, length: number, target: TargetConfig
 
 const fanCoverage = (sensor: PlacedSensor, length: number): CoverageGeometry => {
   const segments = 64
+  const horizontal = sensorFovDeg(sensor).horizontalDeg
   const points = Array.from({ length: segments + 1 }, (_, index) => {
-    const angle = (-sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * index / segments) * Math.PI / 180
+    const angle = (-horizontal / 2 + horizontal * index / segments) * Math.PI / 180
     return new THREE.Vector3(length * Math.sin(angle), 0, -length * Math.cos(angle))
   })
   const triangles: THREE.Vector3[] = []

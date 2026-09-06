@@ -4,9 +4,9 @@ import type { SweepSummary } from '../../core/sweep'
 
 const safeSegment = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
-export const sweepFolderName = (config: SimulationConfig, date = new Date()): string => {
+export const sweepFolderName = (config: SimulationConfig, date = new Date(), rotations = 1): string => {
   const stamp = date.toISOString().replace(/\.\d{3}Z$/, '').replaceAll(':', '-').replace('T', '_')
-  return `rotating-target-sweep_${safeSegment(config.target.name)}_${config.rpm.toFixed(1).replace('.', 'p')}rpm_${stamp}`
+  return `rotating-target-sweep_${safeSegment(config.target.name)}_${config.rpm.toFixed(1).replace('.', 'p')}rpm_${rotations}rev_${stamp}`
 }
 
 export const sweepRecordsCsv = (records: SweepRecord[]): string => {

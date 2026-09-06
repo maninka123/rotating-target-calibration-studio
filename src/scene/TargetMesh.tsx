@@ -1,6 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import type { TargetConfig } from '../core/types'
 import { DEG, wrapRad } from '../core/geometry'
@@ -82,17 +81,11 @@ export function buildTargetResources(target: TargetConfig) {
 interface Props { target: TargetConfig, angleDeg: number, playing: boolean, rpm: number }
 
 export function TargetMesh({ target, angleDeg, playing, rpm }: Props) {
-  const group = useRef<THREE.Group>(null)
-  const currentAngle = useRef(angleDeg * Math.PI / 180)
   const resources = useMemo(() => buildTargetResources(target), [target])
   useEffect(() => () => resources.dispose(), [resources])
-  useFrame((_, delta) => {
-    if (playing) currentAngle.current += rpm * Math.PI / 30 * delta
-    else currentAngle.current = angleDeg * Math.PI / 180
-    if (group.current) group.current.rotation.z = currentAngle.current
-  })
+  void playing; void rpm
   const faceZ = target.thicknessMm / 2000 + 0.0003
-  return <group ref={group}>
+  return <group rotation={[0, 0, angleDeg * Math.PI / 180]}>
     <mesh geometry={resources.geometry} material={resources.plateMaterial} castShadow receiveShadow />
     <lineSegments geometry={resources.edges} material={resources.edgeMaterial} position={[0, 0, .0002]} />
     <mesh position={[0, 0, faceZ]} material={resources.hubMaterial}><circleGeometry args={[hubRadiusSceneM(target), 64]} /></mesh>

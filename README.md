@@ -1,6 +1,6 @@
 # Rotating Target Calibration Studio
 
-An interactive, browser-only laboratory for studying temporal calibration with a rotating apertured disc and heterogeneous LiDAR/camera sampling. It combines exact ray–plane intersection, true per-sample observation times, selectable reported-timestamp conventions, a contour matching and a global geometric boundary fit.
+An interactive, browser-only laboratory for studying temporal calibration with a rotating apertured disc and heterogeneous LiDAR/camera sampling. It combines exact ray–plane intersection, true per-sample observation times, selectable reported-timestamp conventions, contour matching and a global geometric boundary fit.
 
 ## Scope
 
@@ -39,14 +39,14 @@ npm run preview
 - Live single-, dual- and triple-aperture target editing with sensitivity, removed area, centre-of-mass and plate checks.
 - Seven shared sensor architectures and seventeen built-ins, each generated from its own scan kinematics rather than a stored density.
 - One to three sensors with independent stand-off and timestamp conventions.
-- A Three.js scene with rim-connected through-holes, architecture-specific translucent coverage geometry, distance annotations, orbit controls and optional rays.
+- A Three.js scene with rim-connected aperture cut-outs, architecture-specific translucent coverage geometry, distance annotations, orbit controls and optional coverage edges.
 - Typed-array sample frames generated and estimated in a Web Worker.
-- Frozen-frame contour and geometric estimation grouped once per sensor, with thick actual/recovered templates, angle-error tables and cost curves.
+- Frozen-frame contour and geometric estimation grouped once per sensor, with thick truth/recovered templates, angle-error tables and cost curves.
 - Reviewed batch sweeps, independent background execution, error statistics, signed-error plots, cross-sensor time-offset recovery and organised result-folder export.
 - Configuration JSON import/export and a persistent custom sensor builder.
 - Six one-click teaching and validation scenarios.
 
-Sweep mode repeats the selected sensor acquisitions across one full target revolution without animating every frame. Before starting, a review shows the geometry, RPM, estimators, sensor specifications, approximate device time and output destination. Supported browsers create a timestamped folder containing CSV results, a JSON summary and the exact configuration; other browsers download one self-contained JSON package. A separate worker keeps the live simulation responsive during the run.
+Sweep mode repeats the selected sensor acquisitions across one or more full target revolutions without rendering every frame. Before starting, a review shows the target diagram, independently selectable 0–20 RPM, revolution count, estimators, sensor specifications, conservative completion estimate and output destination. Optional intermediate detail reports acquisition and rotation progress. Supported browsers create a timestamped folder containing CSV results, a JSON summary and the exact configuration; other browsers download one self-contained JSON package. A separate worker keeps the live simulation responsive during the run.
 
 ![Face-on rotation view](docs/rotation-view.png)
 
@@ -61,15 +61,17 @@ Sweep mode repeats the selected sensor acquisitions across one full target revol
 
 ## Adding a custom sensor
 
-Open **Panel 2 — Sensor configuration**, select **Build a custom sensor**, choose an architecture, enter its FOV, stand-off and scan parameters, then save it. The preview generates the resulting rays and reports the counted band samples before saving. Custom definitions use the same `SensorDefinition` schema and code path as built-ins and persist in browser `localStorage`.
+Open **Panel 2 — Sensor configuration**, select **Build a custom sensor**, choose an architecture, enter its optics or FOV, stand-off and scan parameters, then save it. Camera FOV is derived from resolution, pixel pitch and focal length; it is never stored separately. The preview generates the resulting rays and reports the counted band samples before saving. Custom definitions use the same `SensorDefinition` schema and code path as built-ins and persist in browser `localStorage`.
 
 For source-controlled sensors, add a JSON-serialisable object to `src/sensors/library.ts`. Architecture-specific optional fields are defined in `src/core/types.ts`.
 
 ## Implemented physics
 
-For each sample ray, the target-plane intersection is evaluated analytically in double precision. Radius and polar angle determine material/aperture/background class at that sample’s own observation time. The background plane is visualised behind true through-holes. Only the annulus from hub radius to outer radius enters estimation.
+For each sample ray, the target-plane intersection is evaluated analytically in double precision. Radius and polar angle determine material/aperture/background class at that sample’s own observation time. The background plane is visual only and does not affect analytic sampling. Rim-connected aperture cut-outs extend from their inner radii to the outer edge. Only the annulus from hub radius to outer radius enters estimation.
 
-Rotating heads enumerate every channel and azimuth step, producing fixed-height scan rings. Risley-prism sensors trace acquisition-dependent rosettes. The micro-mirror uses a sinusoidal horizontal scan and a phase-shifted vertical scan whose triangular amplitude ramp produces an eye-shaped pattern. The Mid-360 uses its asymmetric −7° to +52° elevation limits and a non-repeating rotating-mirror pattern. Fixed arrays and cameras use rectangular angular grids; the single-plane scanner produces a zero-elevation fan.
+Rotating heads enumerate every channel and azimuth step, producing fixed-height scan rings. Risley-prism sensors trace acquisition-dependent rosettes. The micro-mirror uses a sinusoidal horizontal scan and a phase-shifted vertical scan whose triangular amplitude ramp produces an eye-shaped pattern. The Mid-360 uses its asymmetric −7° to +52° elevation limits, optional pitch and a non-repeating rotating-mirror pattern. Fixed arrays and cameras use rectangular angular grids; the single-plane scanner produces a zero-elevation fan.
+
+Reported timestamps are defined explicitly: instantaneous means the first sample observation, accumulation-window start means the frame/window start, exposure midpoint means the midpoint of the full sample span, and rolling readout means the start of the first row exposure. Each rolling row is observed at the midpoint of its own exposure interval.
 
 Angular sensitivity is
 
@@ -87,7 +89,7 @@ r̄ = (2/3) (R³ − ρ³)/(R² − ρ²) · sin(α/2)/(α/2)
 
 and remaining-plate eccentricity follows from removed-area moments. Plate checks use aluminium density 2700 kg/m³, `E = 70 GPa`, gravity 9.81 m/s² and a 0.05 mm deflection limit.
 
-The geometric boundary-fit estimator performs a configurable-resolution global 0–360° class-agreement search, applies a clipped boundary tolerance, then refines the best interval by golden-section search. The default coarse search step is 1°.
+The geometric boundary-fit estimator performs a configurable-resolution global 0–360° class-agreement search, applies a clipped boundary tolerance, then refines the best interval by golden-section search. The default coarse search step is 1°. Its local curvature proxy describes numerical sharpness near the selected minimum; it is not a statistical uncertainty.
 
 ![Estimation overlay](docs/estimation-overlay.png)
 
