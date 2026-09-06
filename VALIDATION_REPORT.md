@@ -24,17 +24,19 @@ Validated on 6 September 2026. Sampling is derived from scan geometry: no workin
 | All 17 built-ins load, fit at default stand-off and generate frames | 17/17 | Pass |
 | Angular target extent at doubled stand-off | 1.979–2.000× reduction | Pass |
 | Puck, array, rotating mirror and camera area scaling | 3.875–4.008× fewer band rays | Pass |
-| Prism area scaling | 2.223× fewer | **Does not meet ≈4×** |
+| Prism area scaling | 3.646× fewer | Pass within finite-pattern tolerance |
 | Micro-mirror area scaling | 1.856× fewer | **Does not meet ≈4×** |
 | Single-plane scaling | 2.000× fewer | **Does not meet ≈4×; expected for a line scan** |
 | Direct ring enumeration | 4, 16 and 32-channel cases match | Pass |
 | 2× camera downsampling in both dimensions | ≈4× fewer counted rays | Pass |
+| Camera samples-across-target units | FLIR 373.33 px; thermal and NIR both 51% of frame height | Pass |
 | Aperture/background classification invariants | Checked for every ray | Pass |
 | Solid/open target ray-count invariance | Counts identical | Pass |
 | Consecutive prism positions | Different | Pass |
 | Consecutive fixed-array positions | Identical | Pass |
+| Avia 100 ms trajectory complexity | More than 35 vertical crossings and more than 500 occupied spatial bins | Pass |
 
-The requested universal 4× band-count rule is not a geometry invariant for finite non-uniform scans. The prism and micro-mirror illuminate different portions of their patterns within a finite window, and a one-dimensional scanner scales with target diameter rather than area. These discrepancies are reported rather than tuning scan parameters to force a ratio.
+The requested universal 4× band-count rule is not a geometry invariant for every finite non-uniform scan. The micro-mirror illuminates different portions of its pattern within a finite window, and a one-dimensional scanner scales with target diameter rather than area. These discrepancies are reported rather than tuning scan parameters to force a ratio.
 
 ## Informational band counts
 
@@ -43,8 +45,8 @@ The requested universal 4× band-count rule is not a geometry invariant for fini
 | LSLiDAR C4 | 222 | LSLiDAR C8 | 552 |
 | Velodyne Puck Hi-Res | 888 | Velodyne HDL-32E | 1,742 |
 | Ouster OS1-64 | 3,246 | Ouster OS1-128 | 6,526 |
-| Livox Avia | 16,934 | Livox Horizon | 21,805 |
-| Livox Tele-15 | 20,110 | Blickfeld Cube 1 | 1,435 |
+| Livox Avia | 3,916 | Livox Horizon | 4,205 |
+| Livox Tele-15 | 12,832 | Blickfeld Cube 1 | 1,435 |
 | Hesai FT120 | 600 | Livox Mid-360 | 372 |
 | Single-plane scanner | 180 | FLIR Blackfly S | 103,276 |
 | FLIR rolling readout | 103,276 | Thermal 640 × 512 | 50,544 |
@@ -68,6 +70,10 @@ These values are not assertions and are not used as sampler inputs.
 | Four aperture edge cases | 4/4 | Pass |
 | Acceptance boundaries | 49/50 samples and 2/3 class samples distinguished | Pass |
 | Geometry edits | Signature and vertex fingerprint change | Pass |
+| Rim-connected aperture triangulation | Aperture probes open; material and hub probes covered; no coincident hole paths | Pass |
+| Preset selection state | Only matching target geometry is selected | Pass |
+| Local strict-mode worker lifecycle | Avia and FLIR live frames become non-empty; clock continues | Pass |
+| Frozen-frame grouping | One sensor produces one output card with two estimator rows | Pass |
 | 100 geometry rebuilds | 200 geometry and 400 material instances disposed | Pass |
 | Hub consistency | 3D, preview and sensor conversions agree for 20, 50 and 95 mm | Pass |
 
@@ -77,12 +83,12 @@ These values are not assertions and are not used as sampler inputs.
 | --- | :---: |
 | TypeScript strict typecheck | Pass |
 | ESLint with zero warnings | Pass |
-| Unit suite: 105 tests | Pass |
+| Unit suite: 109 tests | Pass |
 | Production build | Pass |
-| Main application chunk reduced from about 1,023 kB to about 186 kB | Pass |
+| Main application chunk reduced from about 1,023 kB to about 190 kB | Pass |
 | Three-dimensional renderer emitted as a lazy chunk | Pass |
 | Browser interaction, all six panels and geometry edits | 2/2 checks pass |
-| Three-sensor 60-second run without console errors | Pass; zero console errors |
-| Ten-second README demonstration capture | 50 frames, 638 × 645 px, 2.5 MB | Pass |
+| Three-sensor 60-second run | Pass — non-zero live frames maintained; zero console errors |
+| Ten-second README demonstration capture | 50 frames, 867 × 600 px, 2.4 MB | Pass |
 
 The renderer chunk remains large when requested, but it no longer blocks the initial application bundle. The scene is deterministic and noise-free; reported estimator accuracy is an optimistic simulation bound.

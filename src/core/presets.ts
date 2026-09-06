@@ -28,3 +28,16 @@ export const TRIPLE_APERTURE: TargetConfig = {
 }
 
 export const TARGET_PRESETS = { SINGLE_APERTURE, DUAL_APERTURE, TRIPLE_APERTURE } as const
+
+export const matchesTargetPreset = (target: TargetConfig, preset: TargetConfig): boolean =>
+  target.outerDiameterMm === preset.outerDiameterMm
+  && target.hubRadiusMm === preset.hubRadiusMm
+  && target.thicknessMm === preset.thicknessMm
+  && target.backgroundDistanceM === preset.backgroundDistanceM
+  && target.apertures.length === preset.apertures.length
+  && target.apertures.every((aperture, index) => {
+    const expected = preset.apertures[index]
+    return aperture.widthDeg === expected.widthDeg
+      && aperture.centreDeg === expected.centreDeg
+      && aperture.innerRadiusMm === expected.innerRadiusMm
+  })

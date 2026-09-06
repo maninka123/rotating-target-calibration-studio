@@ -45,9 +45,9 @@ npm run preview
 - Live single-, dual- and triple-aperture target editing with sensitivity, removed area, centre-of-mass and plate checks.
 - Seven shared sensor architectures and seventeen built-ins.
 - One to three sensors with independent stand-off and timestamp conventions.
-- A Three.js scene with true aperture holes, sensor frustums, orbit controls and optional rays.
+- A Three.js scene with rim-connected aperture cut-outs, adjustable translucent sensor fields of view, distance annotations, orbit controls and optional rays.
 - Typed-array sample frames generated and estimated in a Web Worker.
-- Frozen-frame contour and geometric estimation with technical overlays and cost curves.
+- Frozen-frame contour and geometric estimation grouped once per sensor, with thick actual/recovered templates, angle-error tables and cost curves.
 - Batch sweeps, error statistics, signed-error plots, cross-sensor time-offset recovery and CSV export.
 - Configuration JSON import/export and a persistent custom sensor builder.
 - Six one-click teaching and validation scenarios.

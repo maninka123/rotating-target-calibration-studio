@@ -12,7 +12,7 @@ export const drawSamples = (
   canvas: HTMLCanvasElement,
   frame: SampleFrame,
   target: TargetConfig,
-  estimate?: EstimateResult,
+  estimate?: EstimateResult | EstimateResult[],
 ): void => {
   const context = canvas.getContext('2d')
   if (!context) return
@@ -30,7 +30,7 @@ export const drawSamples = (
   const stride = Math.max(1, Math.ceil(frame.classes.length / 20_000))
   for (let index = 0; index < frame.classes.length; index += stride) {
     context.fillStyle = CLASS_COLOURS[frame.classes[index] as keyof typeof CLASS_COLOURS]
-    context.fillRect(cx + frame.xMm[index] * scale, cy - frame.yMm[index] * scale, 1.5, 1.5)
+    context.fillRect(cx + frame.xMm[index] * scale - 1, cy - frame.yMm[index] * scale - 1, 2.2, 2.2)
   }
   context.strokeStyle = '#89969a'
   context.lineWidth = 1
@@ -42,13 +42,21 @@ export const drawSamples = (
   context.arc(cx, cy, hubRadiusSensorPixels(target, scale), 0, Math.PI * 2)
   context.fill()
   context.strokeStyle = '#7f302c'; context.stroke()
-  if (estimate?.accepted && estimate.angleDeg !== undefined) {
-    drawApertures(context, target, estimate.angleDeg, cx, cy, scale, '#176b75', false)
-    drawApertures(context, target, estimate.trueAngleDeg, cx, cy, scale, '#30383a', true)
-    context.fillStyle = '#20282a'
-    context.font = '12px Inter, sans-serif'
-    context.fillText(`Δθ = ${estimate.signedErrorDeg?.toFixed(3)}°`, 12, 20)
+  const estimates = estimate ? (Array.isArray(estimate) ? estimate : [estimate]) : []
+  const truth = estimates[0]
+  const colours = { contour: '#c94b43', geometric: '#176b75' }
+  let legendX = 12
+  if (truth) {
+    context.font = 'bold 11px Inter, sans-serif'; context.fillStyle = '#20282a'; context.fillText('Actual template', legendX, 18); legendX += 104
   }
+  for (const result of estimates) if (result.accepted && result.angleDeg !== undefined) {
+    const colour = colours[result.estimator]
+    drawApertures(context, target, result.angleDeg, cx, cy, scale, colour, false, result.estimator === 'contour' ? 5 : 3.2)
+    context.fillStyle = colour
+    context.fillText(`${result.estimator === 'contour' ? 'Contour' : 'Geometric'} Δθ ${result.signedErrorDeg?.toFixed(3)}°`, legendX, 18)
+    legendX += 142
+  }
+  if (truth) drawApertures(context, target, truth.trueAngleDeg, cx, cy, scale, '#20282a', true, 3.2)
 }
 
 const drawApertures = (
@@ -60,19 +68,24 @@ const drawApertures = (
   scale: number,
   colour: string,
   dashed: boolean,
+  width = 2,
 ): void => {
   context.strokeStyle = colour
-  context.lineWidth = 1.7
-  context.setLineDash(dashed ? [5, 4] : [])
+  context.lineWidth = width
+  context.setLineDash(dashed ? [8, 5] : [])
   for (const aperture of target.apertures) {
     const centre = (angleDeg + aperture.centreDeg) * Math.PI / 180
     const half = aperture.widthDeg * Math.PI / 360
-    for (const edge of [centre - half, centre + half]) {
-      context.beginPath()
-      context.moveTo(cx + aperture.innerRadiusMm * scale * Math.cos(edge), cy - aperture.innerRadiusMm * scale * Math.sin(edge))
-      context.lineTo(cx + target.outerDiameterMm / 2 * scale * Math.cos(edge), cy - target.outerDiameterMm / 2 * scale * Math.sin(edge))
-      context.stroke()
-    }
+    const outer = target.outerDiameterMm / 2 * scale
+    const inner = aperture.innerRadiusMm * scale
+    context.beginPath()
+    context.moveTo(cx + inner * Math.cos(centre - half), cy - inner * Math.sin(centre - half))
+    context.lineTo(cx + outer * Math.cos(centre - half), cy - outer * Math.sin(centre - half))
+    context.arc(cx, cy, outer, -(centre - half), -(centre + half), true)
+    context.lineTo(cx + inner * Math.cos(centre + half), cy - inner * Math.sin(centre + half))
+    context.arc(cx, cy, inner, -(centre + half), -(centre - half), false)
+    context.closePath()
+    context.stroke()
   }
   context.setLineDash([])
 }
@@ -90,7 +103,7 @@ export const drawCost = (canvas: HTMLCanvasElement, result: EstimateResult): voi
   context.fillRect(0, 0, width, height)
   const maxCost = Math.max(...result.costs, 0.01)
   context.strokeStyle = '#176b75'
-  context.lineWidth = 1.5
+  context.lineWidth = 2.5
   context.beginPath()
   result.costs.forEach((cost, index) => {
     const x = 30 + index / 359 * (width - 42)

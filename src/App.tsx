@@ -60,6 +60,8 @@ export default function App() {
           setFrames(next)
           acquisition.current += 1
         }
+      } catch (error) {
+        if (active) console.error(error)
       } finally { pending = false }
     }
     void tick()
@@ -115,8 +117,8 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div><span className="eyebrow">Temporal calibration laboratory</span><h1>Rotating Target Calibration Studio</h1></div>
-        <div className="header-status"><span>Browser only</span><span>Double precision</span><span>Per-sample timing</span></div>
+        <div className="brand"><img src={`${import.meta.env.BASE_URL}app-icon.svg`} alt="" /><div><span className="eyebrow">Temporal calibration laboratory</span><h1>Rotating Target Calibration Studio</h1></div></div>
+        <div className="header-status"><span>Simulation only</span><span>1.00× real time</span><button className="header-play" onClick={() => set('playing', !config.playing)}>{config.playing ? 'Pause' : 'Play'}</button></div>
       </header>
       <nav className="scenario-bar" aria-label="Preset scenarios">
         <span>Scenarios</span>

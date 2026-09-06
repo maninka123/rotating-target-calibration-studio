@@ -27,5 +27,6 @@ export function RotationViewport({ target, angleDeg }: { target: TargetConfig, a
       <path d="M120 8 L114 20 L126 20 Z" fill="#1f292c" aria-label="Zero-degree reference" />
     </svg>
     <span className="rotation-angle">True orientation {angleDeg.toFixed(1)}°</span>
+    <span className="rotation-realtime">1.00× real time</span>
   </div>
 }

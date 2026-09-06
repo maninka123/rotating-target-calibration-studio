@@ -42,7 +42,7 @@ const rayCount = (sensor: SensorDefinition, target: TargetConfig): number => {
 
 export const samplesAcrossTarget = (sensor: SensorDefinition, target: TargetConfig): number => {
   const angularDiameterDeg = 2 * Math.atan((target.outerDiameterMm / 2000) / sensor.standOffM) / DEG
-  if (sensor.architecture === 'camera') return target.outerDiameterMm / 1000 / sensor.standOffM * (sensor.focalLengthMm ?? 1) / ((sensor.pixelPitchUm ?? 1) * 1e-6)
+  if (sensor.architecture === 'camera') return target.outerDiameterMm / 1000 / sensor.standOffM * ((sensor.focalLengthMm ?? 1) / 1000) / ((sensor.pixelPitchUm ?? 1) * 1e-6)
   if (sensor.architecture === 'electronic-array') return angularDiameterDeg / (sensor.horizontalFovDeg / Math.max(1, (sensor.gridColumns ?? 2) - 1))
   return angularDiameterDeg / (sensor.horizontalResolutionDeg ?? sensor.horizontalFovDeg / Math.sqrt(rayCount(sensor, target)))
 }
@@ -94,8 +94,13 @@ export const generateFrame = (
       const phaseB = acquisitionIndex * Math.sqrt(3)
       const angleA = TAU * (sensor.prismRateAHz ?? 1) * time + phaseA
       const angleB = TAU * (sensor.prismRateBHz ?? -1) * time + phaseB
-      direction[0] = Math.tan((sensor.wedgeADeg ?? 1) * DEG) * Math.cos(angleA) + Math.tan((sensor.wedgeBDeg ?? 1) * DEG) * Math.cos(angleB)
-      direction[1] = Math.tan((sensor.wedgeADeg ?? 1) * DEG) * Math.sin(angleA) + Math.tan((sensor.wedgeBDeg ?? 1) * DEG) * Math.sin(angleB)
+      const deflectionA = Math.tan((sensor.wedgeADeg ?? 1) * DEG)
+      const deflectionB = Math.tan((sensor.wedgeBDeg ?? 1) * DEG)
+      const normalizer = deflectionA + deflectionB
+      const rawX = deflectionA * Math.cos(angleA) + deflectionB * Math.cos(angleB)
+      const rawY = deflectionA * Math.sin(angleA) + deflectionB * Math.sin(angleB)
+      direction[0] = rawX / normalizer * Math.tan(sensor.horizontalFovDeg * DEG / 2)
+      direction[1] = rawY / normalizer * Math.tan(sensor.verticalFovDeg * DEG / 2)
       direction[2] = 1
     } else if (sensor.architecture === 'micro-mirror') {
       const time = fraction * span

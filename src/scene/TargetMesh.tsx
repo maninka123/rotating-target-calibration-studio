@@ -3,25 +3,51 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { TargetConfig } from '../core/types'
+import { DEG, wrapRad } from '../core/geometry'
 import { hubRadiusSceneM } from '../core/viewGeometry'
 
 export const HUB_COLOUR = '#c94b43'
-export const buildTargetGeometry = (target: TargetConfig): THREE.ExtrudeGeometry => {
+const TAU = Math.PI * 2
+const positiveAngle = (angle: number) => ((angle % TAU) + TAU) % TAU
+
+const materialRadiusAt = (target: TargetConfig, angle: number): number => {
   const radius = target.outerDiameterMm / 2000
-  const shape = new THREE.Shape()
-  shape.absarc(0, 0, radius, 0, Math.PI * 2, false)
+  const active = target.apertures.filter((aperture) =>
+    Math.abs(wrapRad(angle - aperture.centreDeg * DEG)) < aperture.widthDeg * DEG / 2,
+  )
+  return active.length ? Math.min(...active.map((aperture) => aperture.innerRadiusMm / 1000)) : radius
+}
+
+export const buildTargetShape = (target: TargetConfig): THREE.Shape => {
+  const boundaries = new Set<number>([0, TAU])
   for (const aperture of target.apertures) {
-    const path = new THREE.Path()
-    const inner = aperture.innerRadiusMm / 1000
-    const centre = aperture.centreDeg * Math.PI / 180
-    const half = aperture.widthDeg * Math.PI / 360
-    path.moveTo(inner * Math.cos(centre - half), inner * Math.sin(centre - half))
-    path.lineTo(radius * Math.cos(centre - half), radius * Math.sin(centre - half))
-    path.absarc(0, 0, radius, centre - half, centre + half, false)
-    path.lineTo(inner * Math.cos(centre + half), inner * Math.sin(centre + half))
-    path.absarc(0, 0, inner, centre + half, centre - half, true)
-    shape.holes.push(path)
+    const centre = aperture.centreDeg * DEG
+    const half = aperture.widthDeg * DEG / 2
+    boundaries.add(positiveAngle(centre - half))
+    boundaries.add(positiveAngle(centre + half))
   }
+  const ordered = [...boundaries].sort((a, b) => a - b)
+  const shape = new THREE.Shape()
+  let started = false
+  for (let interval = 0; interval < ordered.length - 1; interval += 1) {
+    const start = ordered[interval]
+    const end = ordered[interval + 1]
+    if (end - start < 1e-10) continue
+    const radius = materialRadiusAt(target, (start + end) / 2)
+    const steps = Math.max(1, Math.ceil((end - start) / (TAU / 360)))
+    for (let step = 0; step <= steps; step += 1) {
+      const angle = start + (end - start) * step / steps
+      const x = radius * Math.cos(angle)
+      const y = radius * Math.sin(angle)
+      if (!started) { shape.moveTo(x, y); started = true } else shape.lineTo(x, y)
+    }
+  }
+  shape.closePath()
+  return shape
+}
+
+export const buildTargetGeometry = (target: TargetConfig): THREE.ExtrudeGeometry => {
+  const shape = buildTargetShape(target)
   const geometry = new THREE.ExtrudeGeometry(shape, { depth: target.thicknessMm / 1000, bevelEnabled: false, curveSegments: 72 })
   geometry.center(); geometry.computeBoundingBox()
   return geometry

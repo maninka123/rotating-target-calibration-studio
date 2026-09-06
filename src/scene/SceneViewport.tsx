@@ -14,13 +14,15 @@ interface Props {
   rpm: number
   showRays: boolean
   showDimensions: boolean
+  showFov: boolean
+  fovOpacity: number
 }
 
-function Frustum({ sensor, index, showRays }: { sensor: PlacedSensor, index: number, showRays: boolean }) {
+function Frustum({ sensor, index, showRays, showFov, opacity }: { sensor: PlacedSensor, index: number, showRays: boolean, showFov: boolean, opacity: number }) {
   const z = sensor.standOffM
   const halfWidth = Math.tan(sensor.horizontalFovDeg * Math.PI / 360) * z
   const halfHeight = Math.tan(sensor.verticalFovDeg * Math.PI / 360) * z
-  const points = useMemo(() => {
+  const { lines, surface } = useMemo(() => {
     const origin = new THREE.Vector3(0, 0, z)
     const corners = [
       new THREE.Vector3(-halfWidth, -halfHeight, 0), new THREE.Vector3(halfWidth, -halfHeight, 0),
@@ -29,13 +31,22 @@ function Frustum({ sensor, index, showRays }: { sensor: PlacedSensor, index: num
     const values: THREE.Vector3[] = []
     corners.forEach((corner) => values.push(origin, corner))
     for (let i = 0; i < 4; i += 1) values.push(corners[i], corners[(i + 1) % 4])
-    return new THREE.BufferGeometry().setFromPoints(values)
+    const triangles: number[] = []
+    for (let i = 0; i < 4; i += 1) {
+      for (const point of [origin, corners[i], corners[(i + 1) % 4]]) triangles.push(point.x, point.y, point.z)
+    }
+    for (const point of [corners[0], corners[1], corners[2], corners[0], corners[2], corners[3]]) triangles.push(point.x, point.y, point.z)
+    const fill = new THREE.BufferGeometry()
+    fill.setAttribute('position', new THREE.Float32BufferAttribute(triangles, 3)); fill.computeVertexNormals()
+    return { lines: new THREE.BufferGeometry().setFromPoints(values), surface: fill }
   }, [halfWidth, halfHeight, z])
+  useEffect(() => () => { lines.dispose(); surface.dispose() }, [lines, surface])
+  const colour = SENSOR_COLOURS[index] ?? SENSOR_COLOURS[0]
   return (
     <group position={[index * 0.035 - 0.035, 0, 0]}>
-      <lineSegments geometry={points}><lineBasicMaterial color="#56a1aa" transparent opacity={0.58} /></lineSegments>
-      <mesh position={[0, 0, z]}><boxGeometry args={[0.06, 0.04, 0.08]} /><meshStandardMaterial color="#176b75" /></mesh>
-      {showRays && <lineSegments geometry={points}><lineBasicMaterial color="#d58b49" transparent opacity={0.22} /></lineSegments>}
+      {showFov && <><mesh geometry={surface}><meshBasicMaterial color={colour} transparent opacity={opacity} depthWrite={false} side={THREE.DoubleSide} /></mesh><lineSegments geometry={lines}><lineBasicMaterial color={colour} transparent opacity={Math.min(.8, opacity * 3 + .2)} /></lineSegments></>}
+      <mesh position={[0, 0, z]}><boxGeometry args={[0.06, 0.04, 0.08]} /><meshStandardMaterial color={colour} /></mesh>
+      {showRays && <lineSegments geometry={lines}><lineBasicMaterial color="#d58b49" transparent opacity={0.28} /></lineSegments>}
     </group>
   )
 }
@@ -83,33 +94,11 @@ function DimensionLine({ start, end, colour, label, labelPosition }: { start: TH
   return <group><lineSegments geometry={geometry}><lineBasicMaterial color={colour} depthTest={false} /></lineSegments><ArrowHead position={start} direction={forward} colour={colour} /><ArrowHead position={end} direction={forward.clone().negate()} colour={colour} />{label && <LabelSprite text={label} position={labelPosition} colour={colour} />}</group>
 }
 
-function ApertureArc({ radius, centre, half, z }: { radius: number, centre: number, half: number, z: number }) {
-  const geometry = useMemo(() => {
-    const points: THREE.Vector3[] = []
-    for (let index = 0; index < 24; index += 1) {
-      for (const step of [index, index + 1]) {
-        const angle = centre - half + 2 * half * step / 24
-        points.push(new THREE.Vector3(radius * .82 * Math.cos(angle), radius * .82 * Math.sin(angle), z))
-      }
-    }
-    return new THREE.BufferGeometry().setFromPoints(points)
-  }, [radius, centre, half, z])
-  useEffect(() => () => geometry.dispose(), [geometry])
-  return <lineSegments geometry={geometry}><lineBasicMaterial color="#f1c27f" depthTest={false} /></lineSegments>
-}
-
 function EngineeringDimensions({ target, sensors }: { target: TargetConfig, sensors: PlacedSensor[] }) {
   const radius = target.outerDiameterMm / 2000
-  const zFace = target.thicknessMm / 2000 + .004
   return <group renderOrder={10}>
-    <DimensionLine start={new THREE.Vector3(-radius, radius + .06, zFace)} end={new THREE.Vector3(radius, radius + .06, zFace)} colour="#e3eaeb" label={`${target.outerDiameterMm.toFixed(0)} mm`} labelPosition={[0, radius + .09, zFace]} />
-    <DimensionLine start={new THREE.Vector3(0, 0, zFace)} end={new THREE.Vector3(target.hubRadiusMm / 1000, 0, zFace)} colour="#d96a62" label={`hub R ${target.hubRadiusMm.toFixed(0)} mm`} labelPosition={[.12, -.035, zFace]} />
     <DimensionLine start={new THREE.Vector3(-radius - .08, 0, 0)} end={new THREE.Vector3(-radius - .08, 0, -target.backgroundDistanceM)} colour="#c9d3d5" label={`background ${target.backgroundDistanceM.toFixed(2)} m`} labelPosition={[-radius - .08, .04, -target.backgroundDistanceM / 2]} />
     {sensors.map((sensor, index) => <DimensionLine key={sensor.instanceId} start={new THREE.Vector3(radius + .08 + index * .045, 0, 0)} end={new THREE.Vector3(radius + .08 + index * .045, 0, sensor.standOffM)} colour={SENSOR_COLOURS[index]} label={`${sensor.standOffM.toFixed(2)} m`} labelPosition={[radius + .1 + index * .05, .04, sensor.standOffM / 2]} />)}
-    {target.apertures.map((aperture) => {
-      const centre = aperture.centreDeg * Math.PI / 180; const half = aperture.widthDeg * Math.PI / 360
-      return <group key={aperture.id}><ApertureArc radius={radius} centre={centre} half={half} z={zFace} />{[centre - half, centre + half].map((angle) => <DimensionLine key={angle} start={new THREE.Vector3(aperture.innerRadiusMm / 1000 * Math.cos(angle), aperture.innerRadiusMm / 1000 * Math.sin(angle), zFace)} end={new THREE.Vector3(radius * Math.cos(angle), radius * Math.sin(angle), zFace)} colour="#f1c27f" label="" labelPosition={[0,0,-10]} />)}<LabelSprite text={`${aperture.widthDeg.toFixed(0)}° · r ${aperture.innerRadiusMm.toFixed(0)} mm`} position={[radius * .9 * Math.cos(centre), radius * .9 * Math.sin(centre), zFace]} colour="#f1c27f" /></group>
-    })}
   </group>
 }
 
@@ -124,10 +113,10 @@ export function SceneViewport(props: Props) {
         <mesh position={[0, 0, -props.target.backgroundDistanceM]} receiveShadow><planeGeometry args={[2.4, 2.4]} /><meshStandardMaterial color="#a9b9bd" roughness={1} /></mesh>
         <TargetMesh target={props.target} angleDeg={props.angleDeg} playing={props.playing} rpm={props.rpm} />
         {props.showDimensions && <EngineeringDimensions target={props.target} sensors={props.sensors} />}
-        {props.sensors.map((sensor, index) => <Frustum key={sensor.instanceId} sensor={sensor} index={index} showRays={props.showRays} />)}
+        {props.sensors.map((sensor, index) => <Frustum key={sensor.instanceId} sensor={sensor} index={index} showRays={props.showRays} showFov={props.showFov} opacity={props.fovOpacity} />)}
         <OrbitController />
       </Canvas>
-      <div className="scene-labels">{props.sensors.map((sensor, index) => <span key={sensor.instanceId}>S{index + 1} · {sensor.name}</span>)}</div>
+      <div className="realtime-badge">Simulation · 1.00× real time</div>
     </div>
   )
 }

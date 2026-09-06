@@ -6,7 +6,7 @@ These checks were repeated before the current release commit on 6 September 2026
 | ---: | --- | --- | --- |
 | 1 | Repository root | `git rev-parse --show-toplevel`, compared with the current project directory | Pass — both resolve to `rotating-target-calibration-studio/` |
 | 2 | Status boundary | `git status --short --untracked-files=all` | Pass — every listed path is relative to this repository root |
-| 3 | Staged files | `git ls-files` after `git add -A` | Pass — 59 project files only, including this report |
+| 3 | Staged files | `git ls-files` after `git add -A` | Pass — 60 project files only, including this report |
 | 4 | Parent absolute paths | Text scan for home/workspace paths in all project sources and documents | Pass — no matches |
 | 5 | External workspace references | Import/reference review | Pass — imports are repository-local or declared registry dependencies; no parent or sibling package, dataset, result, or module is referenced |
 | 6 | Escaping symlinks | `find` symlink scan, excluding dependencies and local tool caches | Pass — no symlinks are tracked |

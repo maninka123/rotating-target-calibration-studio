@@ -62,6 +62,14 @@ describe('scan geometry', () => {
     expect(fullCount / halfCount).toBeCloseTo(4, 1)
   })
 
+  it('reports camera samples across target in pixel rather than millimetre units', () => {
+    expect(samplesAcrossTarget(placed('flir-global'), DUAL_APERTURE)).toBeCloseTo(373.33, 1)
+    const thermalFraction = samplesAcrossTarget(placed('thermal-640'), DUAL_APERTURE) / 512
+    const nirFraction = samplesAcrossTarget(placed('nir-905'), DUAL_APERTURE) / 1024
+    expect(thermalFraction).toBeCloseTo(0.51, 2)
+    expect(nirFraction).toBeCloseTo(thermalFraction, 3)
+  })
+
   it('classifies aperture rays against geometry at each observation time', () => {
     const frame = generateFrame(placed('livox-avia'), DUAL_APERTURE, 8, 27, 2, 3)
     for (let index = 0; index < frame.classes.length; index += 1) if (frame.classes[index] === APERTURE) {
@@ -91,6 +99,22 @@ describe('scan geometry', () => {
     const second = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0, 1)
     expect(second.xMm[0]).not.toBe(first.xMm[0])
     expect(second.yMm[0]).not.toBe(first.yMm[0])
+  })
+
+  it('Livox Avia produces a dense multi-lobed non-repeating trajectory', () => {
+    const frame = generateFrame(placed('livox-avia'), DUAL_APERTURE, 0, 0, 0, 0)
+    let verticalCrossings = 0
+    for (let index = 1; index < frame.yMm.length; index += 1) {
+      if ((frame.yMm[index - 1] < 0) !== (frame.yMm[index] < 0)) verticalCrossings += 1
+    }
+    const occupied = new Set<string>()
+    for (let index = 0; index < frame.xMm.length; index += 8) {
+      const column = Math.floor((frame.xMm[index] + 900) / 30)
+      const row = Math.floor((frame.yMm[index] + 900) / 30)
+      occupied.add(`${column}:${row}`)
+    }
+    expect(verticalCrossings).toBeGreaterThan(35)
+    expect(occupied.size).toBeGreaterThan(500)
   })
 
   it('solid-state acquisitions have identical fixed positions', () => {

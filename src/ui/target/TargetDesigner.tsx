@@ -1,5 +1,5 @@
 import { apertureArea, angularSensitivity, bendingStressMpa, centreOfMassEccentricity, minimumPlateThicknessMm, predictedDispersionRatio, removedAreaRelativeTo } from '../../core/geometry'
-import { DUAL_APERTURE, SINGLE_APERTURE, TRIPLE_APERTURE } from '../../core/presets'
+import { DUAL_APERTURE, matchesTargetPreset, SINGLE_APERTURE, TRIPLE_APERTURE } from '../../core/presets'
 import type { TargetConfig } from '../../core/types'
 import { NumberField } from '../shared/NumberField'
 import { Panel } from '../shared/Panel'
@@ -23,9 +23,9 @@ export function TargetDesigner({ target, onChange }: Props) {
   return (
     <Panel number={1} title="Target designer" className="target-panel">
       <div className="preset-row" aria-label="Target presets">
-        <button onClick={() => onChange(structuredClone(SINGLE_APERTURE))}>Single aperture</button>
-        <button className="active" onClick={() => onChange(structuredClone(DUAL_APERTURE))}>Dual aperture</button>
-        <button onClick={() => onChange(structuredClone(TRIPLE_APERTURE))}>Triple aperture</button>
+        <button className={matchesTargetPreset(target, SINGLE_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, SINGLE_APERTURE)} onClick={() => onChange(structuredClone(SINGLE_APERTURE))}>Single aperture</button>
+        <button className={matchesTargetPreset(target, DUAL_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, DUAL_APERTURE)} onClick={() => onChange(structuredClone(DUAL_APERTURE))}>Dual aperture</button>
+        <button className={matchesTargetPreset(target, TRIPLE_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, TRIPLE_APERTURE)} onClick={() => onChange(structuredClone(TRIPLE_APERTURE))}>Triple aperture</button>
       </div>
       <div className="target-layout">
         <div>
@@ -87,6 +87,13 @@ function TargetPreview({ target }: { target: TargetConfig }) {
         <line x1="120" y1="8" x2="120" y2="232" stroke="#9ca9ac" strokeDasharray="3 4" />
         <line x1="8" y1="120" x2="232" y2="120" stroke="#9ca9ac" strokeDasharray="3 4" />
       </svg>
+      <div className="target-dimensions" aria-label="Target dimensions">
+        <span><small>Outer</small><strong>Ø {target.outerDiameterMm.toFixed(0)} mm</strong></span>
+        <span><small>Hub</small><strong>R {target.hubRadiusMm.toFixed(0)} mm</strong></span>
+        <span><small>Plate</small><strong>{target.thicknessMm.toFixed(1)} mm</strong></span>
+        <span><small>Background</small><strong>{target.backgroundDistanceM.toFixed(2)} m</strong></span>
+        {target.apertures.map((aperture, index) => <span className="aperture-dimension" key={aperture.id}><small>A{index + 1}</small><strong>{aperture.widthDeg.toFixed(0)}° · {aperture.centreDeg.toFixed(0)}° centre</strong><em>inner R {aperture.innerRadiusMm.toFixed(0)} mm</em></span>)}
+      </div>
     </div>
   )
 }
