@@ -6,14 +6,14 @@ These checks were repeated before the current release commit on 6 September 2026
 | ---: | --- | --- | --- |
 | 1 | Repository root | `git rev-parse --show-toplevel`, compared with the current project directory | Pass — both resolve to `rotating-target-calibration-studio/` |
 | 2 | Status boundary | `git status --short --untracked-files=all` | Pass — every listed path is relative to this repository root |
-| 3 | Staged files | `git ls-files` after `git add -A` | Pass — 66 project files only, including this report |
+| 3 | Staged files | `git ls-files` after `git add -A` | Pass — 68 project files only, including this report |
 | 4 | Parent absolute paths | Text scan for home/workspace paths in all project sources and documents | Pass — no matches |
 | 5 | External workspace references | Import/reference review | Pass — imports are repository-local or declared registry dependencies; no parent or sibling package, dataset, result, or module is referenced |
 | 6 | Escaping symlinks | `find` symlink scan, excluding dependencies and local tool caches | Pass — no symlinks are tracked |
 | 7 | Attribution and commit trailers | Case-insensitive prohibited-attribution scan; pre-commit log inspection | Pass — no prohibited reference or co-author trailer in tracked content or history |
-| 8 | Measurement data | Extension scan plus staged-content review | Pass — no bag, point-cloud, CSV, measurement, or copied results file is tracked; numbers are specification constants or simulation parameters |
+| 8 | Measurement data | Extension scan plus staged-content review | Pass — no bag, point-cloud, CSV, measurement, or copied workspace results file is tracked; numeric values are model parameters, specification constants or diagnostics produced by this application |
 | 9 | External publication material | Staged document and source review | Pass — no external publication, section number, citation, manuscript text, or results table is referenced |
-| 10 | Independent history and author | `git log --all` and repository-local identity inspection | Pass — all nine existing project commits are authored solely by Pasindu Ranasinghe using the supplied UNSW email address; the staged release uses the same local identity |
+| 10 | Independent history and author | `git log` and repository-local identity inspection | Pass — all eleven existing commits on main are authored by Pasindu Ranasinghe. Ten use the supplied UNSW email; the GitHub merge uses the same author's GitHub noreply address. The staged release uses the supplied UNSW email. No parent-workspace history is inherited. |
 
 Additional checks:
 

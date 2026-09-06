@@ -114,6 +114,9 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .builder-summary { color: var(--accent); font-size: .78rem; }
 
 .scene-wrap { position: relative; width: 100%; height: 410px; background: #1d2427; }
+.scene-legend { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); display: grid; gap: 5px; padding: 7px 9px; border: 1px solid #58686c; border-radius: 3px; background: rgba(22,29,32,.85); color: #e5eeee; font-size: .68rem; pointer-events: none; }
+.scene-legend > div { display: flex; align-items: center; gap: 7px; }
+.scene-legend > div > span:first-child { width: 10px; height: 10px; flex: none; border: 1px solid rgba(255,255,255,.45); }
 .rotation-wrap { position: relative; width: 100%; height: 410px; background: #f2f5f5; }
 .rotation-wrap > svg { display: block; width: 100%; height: 100%; }
 .rotation-target-svg { transition: transform .12s linear; transform-box: view-box; }
@@ -198,6 +201,9 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .sweep-chart-grid figure { margin: 0; padding: 8px; border: 1px solid #d8e0e1; background: #fafcfc; }
 .sweep-chart-grid figcaption { color: #526064; font-size: .7rem; font-weight: 700; }
 .summary-plot { width: 100%; height: 150px; }
+.plot-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: .72rem; }
+.plot-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.plot-legend i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .field.invalid input { border-color: #b95135; }
 .field-error { color: #8b3928; font-size: .62rem; }
 .sweep-review h3 { margin: 0 0 7px; color: #465558; font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; }

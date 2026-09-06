@@ -3,6 +3,8 @@ import type { SensorDefinition } from './types'
 
 export interface SensorFov { horizontalDeg: number, verticalDeg: number }
 
+export const hasAsymmetricElevation = (sensor: SensorDefinition): boolean => sensor.elevationLowerDeg !== undefined && sensor.elevationUpperDeg !== undefined && Math.abs(sensor.elevationLowerDeg + sensor.elevationUpperDeg) > 1e-9
+
 export const cameraFovDeg = (sensor: Pick<SensorDefinition, 'resolution' | 'pixelPitchUm' | 'focalLengthMm'>): SensorFov => {
   if (!sensor.resolution || !sensor.pixelPitchUm || !sensor.focalLengthMm) throw new Error('Camera resolution, pixel pitch and focal length are required')
   const pitchMm = sensor.pixelPitchUm / 1000

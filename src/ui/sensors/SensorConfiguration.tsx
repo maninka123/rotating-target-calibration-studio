@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { asymmetricCoverage, minimumStandOffM } from '../../core/geometry'
 import { classCounts, generateFrame } from '../../core/sampling'
-import { sensorFovDeg } from '../../core/optics'
-import { parseCustomSensors, serialiseCustomSensors } from '../../core/config'
+import { hasAsymmetricElevation, sensorFovDeg } from '../../core/optics'
+import { parseCustomSensors, serialiseCustomSensors, validateSensor } from '../../core/config'
 import type { Architecture, PlacedSensor, SensorDefinition, TargetConfig, TimestampConvention } from '../../core/types'
 import { ARCHITECTURE_LABELS, COVERAGE_SHAPES, SENSOR_LIBRARY, customSensorErrors } from '../../sensors/library'
 import { NumberField } from '../shared/NumberField'
@@ -24,11 +24,17 @@ const conventions: { value: TimestampConvention, label: string }[] = [
 
 export function SensorConfiguration({ target, sensors, onChange }: Props) {
   const [builderOpen, setBuilderOpen] = useState(false)
+  const [sensorError, setSensorError] = useState('')
   const [customSensors, setCustomSensors] = useState<SensorDefinition[]>(() => {
     try { return parseCustomSensors(localStorage.getItem('rotating-target-custom-sensors') ?? '[]') } catch { return [] }
   })
   const library = [...SENSOR_LIBRARY, ...customSensors]
-  const update = (index: number, patch: Partial<PlacedSensor>) => onChange(sensors.map((sensor, position) => position === index ? { ...sensor, ...patch } : sensor))
+  const update = (index: number, patch: Partial<PlacedSensor>) => {
+    try {
+      const next = validateSensor({ ...sensors[index], ...patch }) as PlacedSensor
+      onChange(sensors.map((sensor, position) => position === index ? next : sensor)); setSensorError('')
+    } catch (error) { setSensorError(error instanceof Error ? error.message : 'Invalid sensor settings') }
+  }
   const replace = (index: number, id: string) => {
     const selected = library.find((sensor) => sensor.id === id)
     if (selected) onChange(sensors.map((sensor, position) => position === index ? { ...structuredClone(selected), instanceId: sensor.instanceId } : sensor))
@@ -42,13 +48,15 @@ export function SensorConfiguration({ target, sensors, onChange }: Props) {
   return (
     <Panel number={2} title="Sensor configuration" actions={<button disabled={sensors.length >= 3} onClick={() => onChange([...sensors, { ...structuredClone(SENSOR_LIBRARY[6]), instanceId: crypto.randomUUID() }])}>Add sensor</button>}>
       <p className="sensor-description">Sensors are analytically colocated on the target axis. Small lateral separation in the 3D scene is for display only.</p>
+      {sensorError && <div className="warning" role="alert">{sensorError}</div>}
       <div className="sensor-stack">
         {sensors.map((sensor, index) => {
           const fov = sensorFovDeg(sensor)
           const minimum = minimumStandOffM(target.outerDiameterMm / 2, fov.horizontalDeg, fov.verticalDeg)
-          const asymmetric = sensor.elevationLowerDeg !== undefined && sensor.elevationUpperDeg !== undefined
+          const asymmetric = hasAsymmetricElevation(sensor)
+          const planar = sensor.architecture === 'single-plane'
           const coverage = asymmetric ? asymmetricCoverage(target, sensor.standOffM, sensor.elevationLowerDeg!, sensor.elevationUpperDeg!, sensor.pitchDeg ?? 0) : null
-          const fits = coverage ? coverage.full : sensor.standOffM >= minimum
+          const fits = !planar && (coverage ? coverage.full : sensor.standOffM >= minimum)
           const bandSamples = classCounts(generateFrame(sensor, target, 0, 0, 0)).band
           return (
             <article className="sensor-card" key={sensor.instanceId}>
@@ -62,7 +70,7 @@ export function SensorConfiguration({ target, sensors, onChange }: Props) {
                 {asymmetric && <NumberField label="Pitch" value={sensor.pitchDeg ?? 0} unit="°" step={0.5} min={-89} max={89} onChange={(value) => update(index, { pitchDeg: value })} />}
               </div>
               <div className="sensor-description">{TIMESTAMP_DESCRIPTIONS[sensor.timestampConvention]}</div>
-              <div className={`fov-status ${fits ? 'ok' : 'bad'}`}><span>{fits ? 'Target coverage: full' : coverage ? `Target coverage: clipped · ${(coverage.clippedFraction * 100).toFixed(0)}% overall / ${(coverage.lowerHalfClippedFraction * 100).toFixed(0)}% of lower half outside` : 'Target coverage: clipped'}{coverage ? ` · elevation ${coverage.lowerDeg >= 0 ? '+' : ''}${coverage.lowerDeg.toFixed(1)}° to ${coverage.upperDeg >= 0 ? '+' : ''}${coverage.upperDeg.toFixed(1)}° · minimum ${Number.isFinite(coverage.minimumStandOffM) ? `${coverage.minimumStandOffM.toFixed(3)} m` : 'unavailable'}` : ` · minimum ${minimum.toFixed(2)} m`}</span>{!fits && !asymmetric && <button onClick={() => update(index, { standOffM: Number(minimum.toFixed(3)) })}>Apply minimum</button>}{coverage && <button onClick={() => update(index, { pitchDeg: -(sensor.elevationLowerDeg! + sensor.elevationUpperDeg!) / 2 })}>Centre on target · {asymmetricCoverage(target, sensor.standOffM, sensor.elevationLowerDeg!, sensor.elevationUpperDeg!, -(sensor.elevationLowerDeg! + sensor.elevationUpperDeg!) / 2).minimumStandOffM.toFixed(3)} m</button>}</div>
+              <div className={`fov-status ${fits ? 'ok' : 'bad'}`}><span>{planar ? 'Target coverage: single line only; full disc coverage is impossible' : fits ? 'Target coverage: full' : coverage ? `Target coverage: clipped · ${(coverage.clippedFraction * 100).toFixed(0)}% overall / ${(coverage.lowerHalfClippedFraction * 100).toFixed(0)}% of lower half outside` : 'Target coverage: clipped'}{coverage ? ` · elevation ${coverage.lowerDeg >= 0 ? '+' : ''}${coverage.lowerDeg.toFixed(1)}° to ${coverage.upperDeg >= 0 ? '+' : ''}${coverage.upperDeg.toFixed(1)}° · minimum ${Number.isFinite(coverage.minimumStandOffM) ? `${coverage.minimumStandOffM.toFixed(3)} m` : 'unavailable'}` : planar ? '' : ` · minimum ${minimum.toFixed(2)} m`}</span>{!fits && !asymmetric && !planar && <button onClick={() => update(index, { standOffM: Math.ceil(minimum * 1000) / 1000 })}>Apply minimum</button>}{coverage && <button onClick={() => update(index, { pitchDeg: -(sensor.elevationLowerDeg! + sensor.elevationUpperDeg!) / 2 })}>Centre on target · {asymmetricCoverage(target, sensor.standOffM, sensor.elevationLowerDeg!, sensor.elevationUpperDeg!, -(sensor.elevationLowerDeg! + sensor.elevationUpperDeg!) / 2).minimumStandOffM.toFixed(3)} m</button>}</div>
               <div className="sensor-meta"><span>{ARCHITECTURE_LABELS[sensor.architecture]} · {COVERAGE_SHAPES[sensor.architecture]}</span><span>{sensor.resolution ? `${sensor.resolution[0]} × ${sensor.resolution[1]} · ${fov.horizontalDeg.toFixed(1)}° × ${fov.verticalDeg.toFixed(1)}°` : asymmetric ? `360° × (${sensor.elevationLowerDeg}°…+${sensor.elevationUpperDeg}°)` : `${fov.horizontalDeg}° × ${fov.verticalDeg}°`}</span></div>
               {sensor.scanMode && <div className="sensor-description">{sensor.scanMode}</div>}
               <div className="sensor-description">{bandSamples.toLocaleString()} samples in working band</div>
@@ -78,11 +86,15 @@ export function SensorConfiguration({ target, sensors, onChange }: Props) {
 
 function CustomBuilder({ target, onSave }: { target: TargetConfig, onSave: (sensor: SensorDefinition) => void }) {
   const [sensor, setSensor] = useState<SensorDefinition>({ ...structuredClone(SENSOR_LIBRARY[0]), id: `custom-${Date.now()}`, name: 'Custom sensor' })
-  const errors = useMemo(() => customSensorErrors(sensor), [sensor])
+  const errors = useMemo(() => {
+    try { validateSensor(sensor, true); return customSensorErrors(sensor) }
+    catch (error) { return [error instanceof Error ? error.message : 'Invalid sensor'] }
+  }, [sensor])
   const summary = useMemo(() => {
+    if (errors.length) return { sampleCount: 0, acrossTarget: 0 }
     const frame = generateFrame({ ...sensor, instanceId: sensor.id }, target, 0, 0, 0)
     return { sampleCount: classCounts(frame).band, acrossTarget: frame.samplesAcrossTarget }
-  }, [sensor, target])
+  }, [sensor, target, errors])
   const setArchitecture = (architecture: Architecture) => {
     const template = SENSOR_LIBRARY.find((item) => item.architecture === architecture) ?? SENSOR_LIBRARY[0]
     setSensor({ ...structuredClone(template), id: sensor.id, name: sensor.name })
@@ -98,7 +110,7 @@ function CustomBuilder({ target, onSave }: { target: TargetConfig, onSave: (sens
         <NumberField label="Stand-off" value={sensor.standOffM} unit="m" min={0.1} step={0.1} onChange={(value) => setSensor({ ...sensor, standOffM: value })} />
         {['prism', 'micro-mirror', 'rotating-mirror'].includes(sensor.architecture) && <NumberField label="Pulse rate" value={sensor.sampleRateHz ?? 10000} unit="Hz" min={100} onChange={(value) => setSensor({ ...sensor, sampleRateHz: value })} />}
         {sensor.architecture === 'micro-mirror' && <><NumberField label="Scan lines/frame" value={sensor.scanLinesPerFrame ?? 200} min={2} onChange={(value) => setSensor({ ...sensor, scanLinesPerFrame: value })} /><NumberField label="Mirror eigenfrequency" value={sensor.mirrorEigenfrequencyHz ?? 1000} unit="Hz" min={1} onChange={(value) => setSensor({ ...sensor, mirrorEigenfrequencyHz: value })} /></>}
-        {sensor.elevationLowerDeg !== undefined && sensor.elevationUpperDeg !== undefined && <><NumberField label="Lower elevation" value={sensor.elevationLowerDeg} unit="°" min={-89} max={89} step={0.5} onChange={(value) => setSensor({ ...sensor, elevationLowerDeg: value, verticalFovDeg: sensor.elevationUpperDeg! - value })} /><NumberField label="Upper elevation" value={sensor.elevationUpperDeg} unit="°" min={-89} max={89} step={0.5} onChange={(value) => setSensor({ ...sensor, elevationUpperDeg: value, verticalFovDeg: value - sensor.elevationLowerDeg! })} /><NumberField label="Pitch" value={sensor.pitchDeg ?? 0} unit="°" min={-89} max={89} step={0.5} onChange={(value) => setSensor({ ...sensor, pitchDeg: value })} /></>}
+        {sensor.elevationLowerDeg !== undefined && sensor.elevationUpperDeg !== undefined && <><NumberField label="Lower elevation" value={sensor.elevationLowerDeg} unit="°" min={-89} max={89} step={0.5} onChange={(value) => setSensor({ ...sensor, elevationLowerDeg: value, verticalFovDeg: sensor.elevationUpperDeg! - value })} /><NumberField label="Upper elevation" value={sensor.elevationUpperDeg} unit="°" min={-89} max={89} step={0.5} onChange={(value) => setSensor({ ...sensor, elevationUpperDeg: value, verticalFovDeg: value - sensor.elevationLowerDeg! })} />{hasAsymmetricElevation(sensor) && <NumberField label="Pitch" value={sensor.pitchDeg ?? 0} unit="°" min={-89} max={89} step={0.5} onChange={(value) => setSensor({ ...sensor, pitchDeg: value })} />}</>}
         {sensor.architecture === 'electronic-array' && <><NumberField label="Grid columns" value={sensor.gridColumns ?? 64} min={2} onChange={(value) => setSensor({ ...sensor, gridColumns: value })} /><NumberField label="Grid rows" value={sensor.gridRows ?? 48} min={2} onChange={(value) => setSensor({ ...sensor, gridRows: value })} /></>}
       </div>
       <p className="builder-summary">Estimated {summary.sampleCount.toLocaleString()} band samples · {summary.acrossTarget.toFixed(0)} samples across target</p>

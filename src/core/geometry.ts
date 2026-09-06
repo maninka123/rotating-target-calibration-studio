@@ -4,17 +4,39 @@ export const DEG = Math.PI / 180
 export const wrapRad = (value: number): number => Math.atan2(Math.sin(value), Math.cos(value))
 export const wrapDeg = (value: number): number => ((value + 180) % 360 + 360) % 360 - 180
 
-export const angularSensitivity = (target: TargetConfig): number => {
+// Piecewise radial extent of remaining material, including the circular seam.
+const radialProfile = (target: TargetConfig) => {
   const radius = target.outerDiameterMm / 2
-  return target.apertures.reduce(
-    (sum, aperture) => sum + (2 * (radius ** 3 - aperture.innerRadiusMm ** 3)) / 3,
-    0,
-  )
+  const positive = (angle: number) => ((angle % 360) + 360) % 360
+  const boundaries = [...new Set([0, 360, ...target.apertures.flatMap((a) => [positive(a.centreDeg - a.widthDeg / 2), positive(a.centreDeg + a.widthDeg / 2)])])].sort((a, b) => a - b)
+  return boundaries.slice(0, -1).map((start, index) => {
+    const end = boundaries[index + 1]
+    const active = target.apertures.filter((a) => a.innerRadiusMm < radius && Math.abs(wrapDeg((start + end) / 2 - a.centreDeg)) < a.widthDeg / 2)
+    return { start, end, radius: Math.min(radius, ...active.map((a) => a.innerRadiusMm)) }
+  })
+}
+
+export const apertureRegions = (target: TargetConfig): Aperture[] => {
+  const pieces: ReturnType<typeof radialProfile> = []
+  for (const piece of radialProfile(target)) {
+    const previous = pieces.at(-1)
+    if (previous && Math.abs(previous.radius - piece.radius) < 1e-9) previous.end = piece.end
+    else pieces.push({ ...piece })
+  }
+  if (pieces.length > 1 && Math.abs(pieces[0].radius - pieces.at(-1)!.radius) < 1e-9) {
+    pieces[0].start = pieces.pop()!.start - 360
+  }
+  return pieces.filter((piece) => piece.radius < target.outerDiameterMm / 2).map((piece, index) => ({ id: `region-${index}`, widthDeg: piece.end - piece.start, centreDeg: ((piece.start + piece.end) / 2 + 360) % 360, innerRadiusMm: piece.radius }))
+}
+
+export const angularSensitivity = (target: TargetConfig): number => {
+  const profile = radialProfile(target)
+  return profile.reduce((sum, piece, index) => sum + Math.abs(piece.radius ** 3 - profile[(index + profile.length - 1) % profile.length].radius ** 3) / 3, 0)
 }
 
 export const apertureArea = (target: TargetConfig): number => {
   const radius = target.outerDiameterMm / 2
-  return target.apertures.reduce(
+  return apertureRegions(target).reduce(
     (sum, aperture) => sum + 0.5 * aperture.widthDeg * DEG
       * (radius ** 2 - aperture.innerRadiusMm ** 2),
     0,
@@ -33,8 +55,9 @@ export const centreOfMassEccentricity = (target: TargetConfig): number => {
   let mx = 0
   let my = 0
   let removed = 0
-  for (const aperture of target.apertures) {
+  for (const aperture of apertureRegions(target)) {
     const area = 0.5 * aperture.widthDeg * DEG * (radius ** 2 - aperture.innerRadiusMm ** 2)
+    if (area <= 0) continue
     const centroidRadius = sectorCentroidRadius(radius, aperture)
     mx += area * centroidRadius * Math.cos(aperture.centreDeg * DEG)
     my += area * centroidRadius * Math.sin(aperture.centreDeg * DEG)
@@ -84,6 +107,7 @@ export const rayPlaneIntersection = (
   directionZ: number,
   planeDistanceM: number,
 ): [number, number, number] | null => {
+  if (![directionX, directionY, directionZ, planeDistanceM].every(Number.isFinite)) return null
   if (Math.abs(directionZ) < Number.EPSILON) return null
   const scale = planeDistanceM / directionZ
   if (scale <= 0) return null

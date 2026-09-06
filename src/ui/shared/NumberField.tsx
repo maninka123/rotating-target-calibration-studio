@@ -7,14 +7,15 @@ interface NumberFieldProps {
   min?: number
   max?: number
   step?: number
+  integer?: boolean
   onChange: (value: number) => void
 }
 
-export function NumberField({ label, value, unit, min, max, step = 1, onChange }: NumberFieldProps) {
+export function NumberField({ label, value, unit, min, max, step = 1, integer = false, onChange }: NumberFieldProps) {
   const [raw, setRaw] = useState(String(value))
   useEffect(() => setRaw(String(value)), [value])
   const parsed = Number(raw)
-  const valid = raw.trim() !== '' && Number.isFinite(parsed) && (min === undefined || parsed >= min) && (max === undefined || parsed <= max)
+  const valid = (!integer || Number.isInteger(parsed)) && raw.trim() !== '' && Number.isFinite(parsed) && (min === undefined || parsed >= min) && (max === undefined || parsed <= max)
   return (
     <label className={`field ${valid ? '' : 'invalid'}`}>
       <span>{label}</span>
@@ -25,7 +26,7 @@ export function NumberField({ label, value, unit, min, max, step = 1, onChange }
           min={min}
           max={max}
           step={step}
-          onChange={(event) => { const next = event.target.value; setRaw(next); const number = Number(next); if (next.trim() && Number.isFinite(number) && (min === undefined || number >= min) && (max === undefined || number <= max)) onChange(number) }}
+          onChange={(event) => { const next = event.target.value; setRaw(next); const number = Number(next); if ((!integer || Number.isInteger(number)) && next.trim() && Number.isFinite(number) && (min === undefined || number >= min) && (max === undefined || number <= max)) onChange(number) }}
           aria-invalid={!valid}
         />
         {unit && <small>{unit}</small>}

@@ -8,19 +8,20 @@ interface Props {
   sensors: PlacedSensor[]
   frames: Record<string, SampleFrame>
   target: TargetConfig
+  playing: boolean
 }
 
-export function LiveSensorViews({ sensors, frames, target }: Props) {
+export function LiveSensorViews({ sensors, frames, target, playing }: Props) {
   return (
     <Panel number={5} title="Live sensor views" className="views-panel">
       <div className="view-grid">
-        {sensors.map((sensor) => <SensorTile key={sensor.instanceId} sensor={sensor} frame={frames[sensor.instanceId]} target={target} />)}
+        {sensors.map((sensor) => <SensorTile key={sensor.instanceId} sensor={sensor} frame={frames[sensor.instanceId]} target={target} playing={playing} />)}
       </div>
     </Panel>
   )
 }
 
-function SensorTile({ sensor, frame, target }: { sensor: PlacedSensor, frame?: SampleFrame, target: TargetConfig }) {
+function SensorTile({ sensor, frame, target, playing }: { sensor: PlacedSensor, frame?: SampleFrame, target: TargetConfig, playing: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     if (canvas.current && frame) drawSamples(canvas.current, frame, target)
@@ -28,7 +29,7 @@ function SensorTile({ sensor, frame, target }: { sensor: PlacedSensor, frame?: S
   const counts = frame ? classCounts(frame) : { material: 0, aperture: 0, background: 0, band: 0 }
   return (
     <article className="sensor-view">
-      <header><div><strong>{sensor.name}</strong><small>{sensor.architecture === 'camera' ? 'Synthetic classified image' : 'Target-plane projection'}</small></div><span className="live-dot">LIVE</span></header>
+      <header><div><strong>{sensor.name}</strong><small>{sensor.architecture === 'camera' ? 'Synthetic classified image' : 'Target-plane projection'}</small></div><span className="live-dot">{playing ? 'LIVE' : 'PAUSED'}</span></header>
       <canvas ref={canvas} aria-label={`${sensor.name} live sensor view`} data-hub-radius-mm={target.hubRadiusMm} />
       <div className="tile-readouts">
         <span>Band <strong>{counts.band.toLocaleString()}</strong></span>

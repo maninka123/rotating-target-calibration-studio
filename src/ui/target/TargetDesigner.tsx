@@ -5,6 +5,7 @@ import type { TargetConfig } from '../../core/types'
 import { NumberField } from '../shared/NumberField'
 import { Panel } from '../shared/Panel'
 import { hubRadiusPreviewUnits } from '../../core/viewGeometry'
+import { validateTarget } from '../../core/config'
 
 interface Props {
   target: TargetConfig
@@ -17,13 +18,17 @@ export function TargetDesigner({ target, onChange }: Props) {
   const eccentricity = centreOfMassEccentricity(target)
   const minimumThickness = minimumPlateThicknessMm(target)
   const stress = bendingStressMpa(target.outerDiameterMm / 2 - target.hubRadiusMm, target.thicknessMm)
-  const update = (key: keyof TargetConfig, value: number) => onChange({ ...target, [key]: value })
+  const commitTarget = (next: TargetConfig) => {
+    try { onChange(validateTarget(next)); setApertureError('') }
+    catch (error) { setApertureError(error instanceof Error ? error.message : 'Invalid target geometry') }
+  }
+  const update = (key: keyof TargetConfig, value: number) => commitTarget({ ...target, [key]: value })
   const updateAperture = (index: number, key: 'widthDeg' | 'centreDeg' | 'innerRadiusMm', value: number) => {
     const apertures = target.apertures.map((aperture, position) => position === index ? { ...aperture, [key]: value } : aperture)
     const overlap = overlappingAperturePair(apertures)
     if (overlap) { setApertureError(`A${overlap[0] + 1} and A${overlap[1] + 1} overlap. Adjust the width or centre angle.`); return }
     setApertureError('')
-    onChange({ ...target, apertures })
+    commitTarget({ ...target, apertures })
   }
   const addAperture = () => {
     const centreDeg = Array.from({ length: 36 }, (_, index) => index * 10).find((centre) => !overlappingAperturePair([...target.apertures, { id: 'candidate', widthDeg: 20, centreDeg: centre, innerRadiusMm: Math.max(target.hubRadiusMm, Math.min(100, target.outerDiameterMm / 2)) }]))
@@ -61,7 +66,7 @@ export function TargetDesigner({ target, onChange }: Props) {
           {apertureError && <div className="warning" role="alert">{apertureError}</div>}
           <div className="readout-grid">
             <Readout label="Angular sensitivity Λ" value={`${(lambda / 1e6).toFixed(2)} × 10⁶ mm³`} />
-            <Readout label="Dispersion ratio vs single aperture" value={`${(predictedDispersionRatio(SINGLE_APERTURE, target) * 100).toFixed(1)}%`} />
+            <Readout label="Dispersion ratio vs single aperture" value={lambda > 0 ? `${(predictedDispersionRatio(SINGLE_APERTURE, target) * 100).toFixed(1)}%` : 'Unobservable'} />
             <Readout label="Aperture area" value={`${apertureArea(target).toFixed(0)} mm²`} detail={`${removedAreaRelativeTo(target, DUAL_APERTURE) >= 0 ? '+' : ''}${removedAreaRelativeTo(target, DUAL_APERTURE).toFixed(0)} mm² vs dual aperture`} />
             <Readout label="COM eccentricity" value={`${eccentricity.toFixed(1)} mm`} warning={eccentricity > 28.5} />
             <Readout label="Minimum thickness" value={`${minimumThickness.toFixed(2)} mm`} warning={target.thicknessMm < minimumThickness} />

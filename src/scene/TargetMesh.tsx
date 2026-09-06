@@ -18,7 +18,8 @@ const materialRadiusAt = (target: TargetConfig, angle: number): number => {
 }
 
 export const buildTargetShape = (target: TargetConfig): THREE.Shape => {
-  const boundaries = new Set<number>([0, TAU])
+  // Include cardinal directions so polygon tessellation preserves exact rim bounds.
+  const boundaries = new Set<number>([0, Math.PI / 2, Math.PI, 3 * Math.PI / 2, TAU])
   for (const aperture of target.apertures) {
     const centre = aperture.centreDeg * DEG
     const half = aperture.widthDeg * DEG / 2
@@ -48,7 +49,8 @@ export const buildTargetShape = (target: TargetConfig): THREE.Shape => {
 export const buildTargetGeometry = (target: TargetConfig): THREE.ExtrudeGeometry => {
   const shape = buildTargetShape(target)
   const geometry = new THREE.ExtrudeGeometry(shape, { depth: target.thicknessMm / 1000, bevelEnabled: false, curveSegments: 72 })
-  geometry.center(); geometry.computeBoundingBox()
+  geometry.translate(0, 0, -target.thicknessMm / 2000)
+  geometry.computeBoundingBox()
   return geometry
 }
 

@@ -180,6 +180,9 @@ export function SceneViewport(props: Props) {
         {props.sensors.map((sensor, index) => <SensorCoverage key={sensor.instanceId} sensor={sensor} target={props.target} index={index} showRays={props.showRays} showFov={props.showFov} opacity={props.fovOpacity} />)}
         <OrbitController />
       </Canvas>
+      <div className="scene-legend" aria-label="Sensor coverage colours">
+        {props.sensors.map((sensor, index) => <div key={sensor.instanceId}><span aria-hidden="true" style={{ backgroundColor: SENSOR_COLOURS[index] }} /><span>S{index + 1} · {sensor.name}</span></div>)}
+      </div>
       <div className="realtime-badge">Simulation · 1.00× real time</div>
     </div>
   )

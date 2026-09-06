@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { scenarioConfiguration } from '../core/scenarios'
 import type { SweepRecord } from '../core/types'
 import type { SweepSummary } from '../core/sweep'
-import { saveSweepFolder, sweepFolderName, sweepRecordsCsv } from '../ui/results/sweepFiles'
+import { saveSweepCheckpoint, saveSweepFolder, sweepFolderName, sweepRecordsCsv, type SweepOutputDetails } from '../ui/results/sweepFiles'
+
+const details: SweepOutputDetails = { pairwiseOffsets: [{ fromSensor: 'sensor-1', toSensor: 'sensor-2', estimator: 'geometric', recoveredOffsetMs: 50, recoveredOffsetSdMs: 1, expectedOffsetMs: 50 }], run: { rpm: 5, rotations: 2, acquisitionsPerRotation: 300, estimators: ['geometric'], searchResolutionDeg: 1, initialAngleDeg: 17, saveIntermediate: true } }
 
 const record: SweepRecord = {
   acquisition: 0, sensor: 'sensor-1', estimator: 'geometric', accepted: true,
@@ -22,7 +24,7 @@ describe('sweep output package', () => {
     expect(csv).toContain('"sensor-1"')
   })
 
-  it('creates a result folder and writes all three output files', async () => {
+  it('saves run settings, pairwise offsets and original configuration alongside results', async () => {
     const written = new Map<string, string>()
     const folder = {
       getFileHandle: async (name: string) => ({ createWritable: async () => ({ write: async (value: string) => { written.set(name, value) }, close: async () => undefined }) }),
@@ -31,9 +33,27 @@ describe('sweep output package', () => {
     const parent = { getDirectoryHandle: async (name: string) => { created = name; return folder } } as unknown as FileSystemDirectoryHandle
     const summary = { sensor: 'sensor-1', estimator: 'geometric', acquisitions: 1, accepted: 1, rejectionRate: 0, maeDeg: 0.1, medianAbsDeg: 0.1, sdDeg: null, p95Deg: 0.1 } satisfies SweepSummary
     const config = scenarioConfiguration('Dense camera')
-    await saveSweepFolder(parent, 'result-folder', config, [record], [summary])
+    await saveSweepFolder(parent, 'result-folder', config, [record], [summary], details)
     expect(created).toBe('result-folder')
-    expect([...written.keys()].sort()).toEqual(['configuration.json', 'sweep-results.csv', 'sweep-summary.json'])
+    expect([...written.keys()].sort()).toEqual(['configuration.json', 'pairwise-offsets.json', 'run-settings.json', 'sweep-results.csv', 'sweep-summary.json'])
+    expect(JSON.parse(written.get('run-settings.json')!)).toEqual(details.run)
+    expect(JSON.parse(written.get('pairwise-offsets.json')!)).toEqual(details.pairwiseOffsets)
     expect(written.get('sweep-results.csv')).toContain('sensor-1')
+  })
+
+  it('writes numbered intermediate acquisition checkpoints', async () => {
+    const writes = new Map<string, string>()
+    const folders: string[] = []
+    const handle = {
+      getDirectoryHandle: async (name: string) => { folders.push(name); return handle },
+      getFileHandle: async (name: string) => ({ createWritable: async () => ({ write: async (text: string) => { writes.set(name, text) }, close: async () => undefined }) }),
+    } as unknown as FileSystemDirectoryHandle
+    await saveSweepCheckpoint(handle, 'run', 2, [record])
+    expect(folders).toEqual(['run', 'checkpoints'])
+    expect(writes.get('acquisitions-002.csv')).toContain('sensor-1')
+  })
+
+  it('escapes quoted CSV fields using doubled quotes', () => {
+    expect(sweepRecordsCsv([{ ...record, sensor: 'A "quoted", sensor' }])).toContain('"A ""quoted"", sensor"')
   })
 })

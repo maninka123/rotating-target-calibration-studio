@@ -7,7 +7,8 @@ import { PNG } from 'pngjs'
 const { GIFEncoder, applyPalette, quantize } = gifenc
 
 const port = 4174
-const server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port)], {
+const baseUrl = process.env.CAPTURE_URL ?? `http://127.0.0.1:${port}/`
+const server = process.env.CAPTURE_URL ? undefined : spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
   env: process.env,
   stdio: 'ignore',
 })
@@ -15,7 +16,7 @@ const server = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port'
 async function waitForServer() {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/`)
+      const response = await fetch(baseUrl, { signal: AbortSignal.timeout(2000) })
       if (response.ok) return
     } catch { /* server is still starting */ }
     await new Promise((resolve) => setTimeout(resolve, 250))
@@ -28,7 +29,7 @@ try {
   await waitForServer()
   browser = await chromium.launch({ headless: true })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
-  await page.goto(`http://127.0.0.1:${port}/`)
+  await page.goto(baseUrl)
   await page.getByRole('button', { name: 'Continue' }).click()
   const panel = page.locator('.scene-panel')
   await panel.scrollIntoViewIfNeeded()
@@ -47,5 +48,5 @@ try {
   await writeFile('docs/simulator-demo.gif', encoder.bytesView())
 } finally {
   await browser?.close()
-  server.kill('SIGTERM')
+  server?.kill('SIGTERM')
 }

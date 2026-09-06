@@ -24,7 +24,7 @@ export function RotationViewport({ target, angleDeg }: { target: TargetConfig, a
         <circle cx="120" cy="120" r={hubRadiusPreviewUnits(target, 100)} fill="#c94b43" stroke="#451c1a" strokeWidth="2" />
         <circle cx="120" cy="120" r="100" fill="none" stroke="#20282a" strokeWidth="2.5" />
       </g>
-      <path d="M120 8 L114 20 L126 20 Z" fill="#1f292c" aria-label="Zero-degree reference" />
+      <path d="M232 120 L220 114 L220 126 Z" fill="#1f292c" aria-label="Zero-degree reference" />
     </svg>
     <span className="rotation-angle">True orientation {angleDeg.toFixed(1)}°</span>
     <span className="rotation-realtime">1.00× real time</span>

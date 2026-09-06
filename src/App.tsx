@@ -33,6 +33,8 @@ export default function App() {
   const [frames, setFrames] = useState<Record<string, SampleFrame>>({})
   const [estimates, setEstimates] = useState<Record<string, { frame: SampleFrame, results: EstimateResult[] }>>({})
   const [busy, setBusy] = useState(false)
+  const [frameBusy, setFrameBusy] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
   const [sweepProgress, setSweepProgress] = useState(0)
   const [sweepRecords, setSweepRecords] = useState<SweepRecord[]>([])
   const [sweepSummaries, setSweepSummaries] = useState<SweepSummary[]>([])
@@ -45,6 +47,9 @@ export default function App() {
   const aboutTrigger = useRef<HTMLAnchorElement>(null)
   const acquisition = useRef(0)
   const clockOrigin = useRef({ timeMs: performance.now(), angleDeg: 0 })
+  const revision = useRef(0)
+  const lastFrameKey = useRef('')
+  const frameKey = JSON.stringify([config.target, config.sensors, config.rpm, config.angleDeg])
 
   const resetClock = useCallback((angleDeg: number) => { clockOrigin.current = { timeMs: performance.now(), angleDeg } }, [])
 
@@ -73,7 +78,7 @@ export default function App() {
           acquisition.current += 1
         }
       } catch (error) {
-        if (active) console.error(error)
+        if (active) setErrorMessage(error instanceof Error ? error.message : 'Frame generation failed')
       } finally { pending = false }
     }
     void tick()
@@ -81,18 +86,38 @@ export default function App() {
     return () => { active = false; window.clearInterval(timer) }
   }, [config.playing, config.rpm, config.sensors, config.target, worker])
 
-  const set = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig((current) => {
+  useEffect(() => {
+    if (config.playing || lastFrameKey.current === frameKey) { setFrameBusy(false); return }
+    let active = true
+    setFrameBusy(true)
+    void Promise.all(config.sensors.map((sensor) => worker.request({ type: 'frame', sensor, target: config.target, rpm: config.rpm, angleDeg: config.angleDeg, startS: 0, acquisitionIndex: acquisition.current }))).then((replies) => {
+      if (!active) return
+      const next: Record<string, SampleFrame> = {}
+      for (const reply of replies) { const frame = reply.frame as SampleFrame; next[frame.sensorId] = frame }
+      setFrames(next)
+      lastFrameKey.current = frameKey
+    }).catch((error: Error) => { if (active) setErrorMessage(error.message) }).finally(() => { if (active) setFrameBusy(false) })
+    return () => { active = false }
+  }, [config.playing, config.target, config.sensors, config.rpm, config.angleDeg, frameKey, worker])
+
+  const set = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => {
+    if (key !== 'showRays') { revision.current += 1; setEstimates({}); setErrorMessage('') }
+    if (key === 'target' || key === 'sensors' || key === 'rpm' || key === 'angleDeg') { setFrames({}); lastFrameKey.current = '' }
+    if (key === 'playing' && value === false && config.sensors.every((sensor) => frames[sensor.instanceId])) lastFrameKey.current = frameKey
+    setConfig((current) => {
     if (key === 'rpm' || key === 'playing' || key === 'angleDeg') resetClock(key === 'angleDeg' ? Number(value) : current.angleDeg)
     return { ...current, [key]: value }
-  })
+    })
+  }
 
   const runEstimate = useCallback(async (estimators: ('contour' | 'geometric')[]) => {
     setBusy(true)
     setEstimates({})
+    const requestedRevision = revision.current
     try {
+      if (config.sensors.some((sensor) => !frames[sensor.instanceId])) throw new Error('Wait for the sensor frames to finish loading')
       const replies = await Promise.all(config.sensors.map((sensor) => worker.request({
-        type: 'estimate', sensor, target: config.target, rpm: config.rpm,
-        angleDeg: config.angleDeg, startS: 0, acquisitionIndex: acquisition.current,
+        type: 'estimate', frame: frames[sensor.instanceId], target: config.target, rpm: config.rpm,
         estimators,
         searchResolutionDeg: config.searchResolutionDeg,
       })))
@@ -101,15 +126,19 @@ export default function App() {
         const frame = reply.frame as SampleFrame
         next[frame.sensorId] = { frame, results: reply.results as EstimateResult[] }
       })
-      setEstimates(next)
+      if (requestedRevision === revision.current) setEstimates(next)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Estimation failed')
     } finally { setBusy(false) }
-  }, [config, worker])
+  }, [config, frames, worker])
 
-  const runSweepMode = useCallback(async (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number }) => {
+  const runSweepMode = useCallback(async (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number, configuration: SimulationConfig, onIntermediate?: (records: SweepRecord[]) => void }) => {
     setBusy(true)
+    setSweepRecords([]); setSweepSummaries([]); setPairwiseOffsets([])
     setSweepProgress(0.001)
     try {
-      const reply = await sweepWorker.request({ type: 'sweep', sensors: config.sensors, target: config.target, rpm: options.rpm, rotations: options.rotations, acquisitions: count, estimators, searchResolutionDeg: config.searchResolutionDeg }, setSweepProgress)
+      const run = options.configuration
+      const reply = await sweepWorker.request({ type: 'sweep', sensors: run.sensors, target: run.target, rpm: options.rpm, angleDeg: run.angleDeg, rotations: options.rotations, acquisitions: count, estimators, searchResolutionDeg: run.searchResolutionDeg }, (fraction, checkpoint) => { setSweepProgress(fraction); if (checkpoint.length) options.onIntermediate?.(checkpoint) })
       const records = reply.records as SweepRecord[]
       const summaries = reply.summaries as SweepSummary[]
       const offsets = reply.pairwiseOffsets as PairwiseOffset[]
@@ -117,11 +146,13 @@ export default function App() {
       setSweepSummaries(summaries)
       setPairwiseOffsets(offsets)
       setSweepProgress(1)
-      return { records, summaries }
-    } finally { setBusy(false) }
-  }, [config, sweepWorker])
+      return { records, summaries, pairwiseOffsets: offsets }
+    } finally { setBusy(false); setSweepProgress(0) }
+  }, [sweepWorker])
 
   const applyScenario = (name: ScenarioName) => {
+    revision.current += 1
+    lastFrameKey.current = ''
     const next = scenarioConfiguration(name)
     resetClock(next.angleDeg)
     setConfig(next)
@@ -135,6 +166,9 @@ export default function App() {
   const importConfig = (incoming: SimulationConfig) => {
     if (!incoming.target || !Array.isArray(incoming.sensors) || incoming.sensors.length < 1 || incoming.sensors.length > 3) throw new Error('Invalid configuration')
     const next = parseConfiguration(JSON.stringify(incoming))
+    revision.current += 1
+    lastFrameKey.current = ''
+    setFrames({}); setEstimates({}); setSweepRecords([]); setSweepSummaries([]); setPairwiseOffsets([])
     resetClock(next.angleDeg)
     setConfig(next)
   }
@@ -177,8 +211,9 @@ export default function App() {
         <SensorConfiguration target={config.target} sensors={config.sensors} onChange={(sensors) => set('sensors', sensors)} />
         <ScenePanel target={config.target} sensors={config.sensors} rpm={config.rpm} angleDeg={config.angleDeg} playing={config.playing} showRays={config.showRays} onRpm={(rpm) => set('rpm', rpm)} onAngle={(angle) => set('angleDeg', angle)} onPlaying={(playing) => set('playing', playing)} onShowRays={(show) => set('showRays', show)} />
         <RotationPanel target={config.target} angleDeg={config.angleDeg} playing={config.playing} rpm={config.rpm} />
-        <LiveSensorViews sensors={config.sensors} frames={frames} target={config.target} />
-        <ResultsPanel playing={config.playing} sensors={config.sensors} config={config} estimates={estimates} onEstimate={runEstimate} busy={busy} sweepProgress={sweepProgress} sweepRecords={sweepRecords} sweepSummaries={sweepSummaries} pairwiseOffsets={pairwiseOffsets} onSweep={runSweepMode} onImport={importConfig} onSearchResolution={(value) => set('searchResolutionDeg', value)} />
+        <LiveSensorViews sensors={config.sensors} frames={frames} target={config.target} playing={config.playing} />
+        {errorMessage && <div role="alert" className="rejection">{errorMessage}</div>}
+        <ResultsPanel playing={config.playing} frameBusy={frameBusy || config.sensors.some((sensor) => !frames[sensor.instanceId])} sensors={config.sensors} config={config} estimates={estimates} onEstimate={runEstimate} busy={busy} sweepProgress={sweepProgress} sweepRecords={sweepRecords} sweepSummaries={sweepSummaries} pairwiseOffsets={pairwiseOffsets} onSweep={runSweepMode} onCancelSweep={() => sweepWorker.terminate()} onImport={importConfig} onSearchResolution={(value) => set('searchResolutionDeg', value)} />
       </main>
       <footer>All calculations run locally. No telemetry, backend, ROS runtime, or external service is used.</footer>
       <FirstLoadNotice open={noticeOpen} onClose={closeNotice} />

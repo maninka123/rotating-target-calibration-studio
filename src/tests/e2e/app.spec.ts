@@ -10,11 +10,13 @@ test('all panels render, rotation runs, and both estimators return output', asyn
         kind: 'directory', name: 'Selected parent',
         getDirectoryHandle: async (folderName: string) => {
           savedFiles.push(`folder:${folderName}`)
-          return {
+          const folder = {
+            getDirectoryHandle: async () => folder,
             getFileHandle: async (fileName: string) => ({
               createWritable: async () => ({ write: async () => { savedFiles.push(fileName) }, close: async () => undefined }),
             }),
           }
+          return folder
         },
       }),
     })
@@ -111,13 +113,14 @@ test('target edits update both 3D views and keep hub radii consistent', async ({
   await expect(page.getByRole('button', { name: 'Single aperture', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('button', { name: 'Dual aperture', exact: true })).toHaveAttribute('aria-pressed', 'false')
   await page.getByRole('button', { name: 'Dual aperture', exact: true }).click()
+  await page.getByLabel('Inner radius').first().fill('80')
   for (const [label, value] of [['Outer diameter', '460'], ['Hub radius', '65'], ['Plate thickness', '5']] as const) {
     const before = await scene.getAttribute('data-target-signature')
     await page.getByLabel(label).fill(value)
     await expect(scene).not.toHaveAttribute('data-target-signature', before ?? '')
     await expect(rotation).toHaveAttribute('data-target-signature', await scene.getAttribute('data-target-signature') ?? '')
   }
-  for (const [label, value] of [['Width', '48'], ['Centre', '22'], ['Inner radius', '80']] as const) {
+  for (const [label, value] of [['Width', '48'], ['Centre', '22'], ['Inner radius', '90']] as const) {
     const before = await scene.getAttribute('data-target-signature')
     await page.getByLabel(label).first().fill(value)
     await expect(scene).not.toHaveAttribute('data-target-signature', before ?? '')

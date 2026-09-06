@@ -95,7 +95,7 @@ export interface SampleFrame {
 export interface EstimateResult {
   estimator: 'contour' | 'geometric'
   accepted: boolean
-  reason?: 'insufficient boundary support' | 'correspondence failure' | 'insufficient two-dimensional boundary coverage' | 'fewer than 50 samples in working band' | 'fewer than 3 samples in each class' | 'minimum cost above threshold' | 'orientation ambiguous'
+  reason?: 'insufficient boundary support' | 'correspondence failure' | 'insufficient two-dimensional boundary coverage' | 'fewer than 50 samples in working band' | 'fewer than 3 samples in each class' | 'minimum cost above threshold' | 'orientation ambiguous' | 'orientation unobservable'
   angleDeg?: number
   trueAngleDeg: number
   signedErrorDeg?: number

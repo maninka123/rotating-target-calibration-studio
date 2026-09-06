@@ -72,7 +72,7 @@ describe('estimator isolation and behaviour', () => {
 
   it('sweep truth spans one revolution without a large angular gap', () => {
     const acquisitions = 180
-    const { records } = runSweep(DUAL_APERTURE, [placed('hesai-ft120', { gridColumns: 20, gridRows: 16 })], 0, acquisitions, ['geometric'], 2)
+    const { records } = runSweep(DUAL_APERTURE, [placed('hesai-ft120', { gridColumns: 20, gridRows: 16 })], 5, acquisitions, ['geometric'], 2)
     const angles = records.map((row) => row.trueAngleDeg).sort((a, b) => a - b)
     const gaps = angles.map((angle, index) => index ? angle - angles[index - 1] : angle + 360 - angles.at(-1)!)
     expect(Math.max(...gaps)).toBeLessThanOrEqual(2 * 360 / acquisitions)

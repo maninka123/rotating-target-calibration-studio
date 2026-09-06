@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { generatedRayCount } from '../../core/sampling'
+import { SimulationWorkerClient } from '../../workers/client'
+import { NumberField } from '../shared/NumberField'
 import type { PlacedSensor, SimulationConfig } from '../../core/types'
 import { sensorFovDeg } from '../../core/optics'
 import type { TargetConfig } from '../../core/types'
@@ -29,11 +30,9 @@ const scanDetails = (sensor: PlacedSensor): string => {
   return `${sensor.horizontalResolutionDeg}° scan step`
 }
 
-const estimatedDuration = (config: SimulationConfig, acquisitions: number, estimators: ('contour' | 'geometric')[]): string => {
-  const rays = config.sensors.reduce((sum, sensor) => sum + generatedRayCount(sensor, config.target), 0)
-  const searchSteps = Math.ceil(360 / config.searchResolutionDeg)
-  const estimatorFactor = (estimators.includes('geometric') ? searchSteps : 0) + (estimators.includes('contour') ? 4 : 0)
-  const seconds = Math.max(1, acquisitions * rays * estimatorFactor / 18_000_000 * 1.35)
+const estimatedDuration = (secondsPerAcquisition: number | null, acquisitions: number, saveIntermediate: boolean): string => {
+  if (secondsPerAcquisition === null) return 'Measuring this browser…'
+  const seconds = Math.max(1, acquisitions * secondsPerAcquisition * 1.35 + (saveIntermediate ? 2 : 0))
   if (seconds < 60) return `about ${Math.ceil(seconds)} seconds`
   return `about ${Math.ceil(seconds / 60)} minutes`
 }
@@ -48,6 +47,21 @@ export function SweepReviewDialog({ config, acquisitions, estimators, onCancel, 
   const [rpm, setRpm] = useState(config.rpm)
   const [rotations, setRotations] = useState(1)
   const [intermediate, setIntermediate] = useState(true)
+  const [secondsPerAcquisition, setSecondsPerAcquisition] = useState<number | null>(null)
+  const [benchmarkError, setBenchmarkError] = useState('')
+  const cancel = useRef(onCancel)
+  cancel.current = onCancel
+  const benchmarkKey = JSON.stringify([config.target, config.sensors, config.searchResolutionDeg, estimators, rpm])
+  useEffect(() => {
+    const client = new SimulationWorkerClient()
+    let active = true
+    setSecondsPerAcquisition(null); setBenchmarkError('')
+    const [target, sensors, searchResolutionDeg, selected, speed] = JSON.parse(benchmarkKey) as [SimulationConfig['target'], PlacedSensor[], number, ('contour' | 'geometric')[], number]
+    void client.request({ type: 'benchmark', target, sensors, searchResolutionDeg, estimators: selected, rpm: speed, angleDeg: 37.4 }).then((reply) => {
+      if (active) setSecondsPerAcquisition(Number(reply.secondsPerAcquisition))
+    }).catch((error: Error) => { if (active) setBenchmarkError(error.message) })
+    return () => { active = false; client.terminate() }
+  }, [benchmarkKey])
   const folderDate = useRef(new Date())
   const folderName = sweepFolderName({ ...config, rpm }, folderDate.current, rotations)
   const directorySupported = typeof (window as PickerWindow).showDirectoryPicker === 'function'
@@ -55,7 +69,7 @@ export function SweepReviewDialog({ config, acquisitions, estimators, onCancel, 
   useEffect(() => {
     cancelButton.current?.focus()
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); onCancel(); return }
+      if (event.key === 'Escape') { event.preventDefault(); cancel.current(); return }
       if (event.key !== 'Tab') return
       const controls = dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')
       if (!controls?.length) return
@@ -66,7 +80,7 @@ export function SweepReviewDialog({ config, acquisitions, estimators, onCancel, 
     }
     document.addEventListener('keydown', keydown)
     return () => document.removeEventListener('keydown', keydown)
-  }, [onCancel])
+  }, [])
 
   const chooseDirectory = async () => {
     try {
@@ -82,14 +96,14 @@ export function SweepReviewDialog({ config, acquisitions, estimators, onCancel, 
   return (
     <div className="notice-backdrop">
       <div className="sweep-review" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="sweep-review-title">
-        <header><div><span className="eyebrow">Review batch</span><h2 id="sweep-review-title">Run acquisition sweep?</h2></div><strong className="sweep-estimate">{estimatedDuration({ ...config, rpm }, acquisitions * rotations, estimators)}</strong></header>
+        <header><div><span className="eyebrow">Review batch</span><h2 id="sweep-review-title">Run acquisition sweep?</h2></div><strong className="sweep-estimate">{estimatedDuration(secondsPerAcquisition, acquisitions * rotations, intermediate)}</strong></header>
         <div className="sweep-review-grid">
-          <section className="sweep-target-review"><TargetDiagram target={config.target} /><div><h3>Target and run</h3><dl><div><dt>Geometry</dt><dd>{config.target.name}: Ø {config.target.outerDiameterMm} mm, hub R {config.target.hubRadiusMm} mm, {config.target.apertures.length} aperture{config.target.apertures.length === 1 ? '' : 's'}</dd></div><div><dt>Speed</dt><dd><input aria-label="Sweep RPM" type="number" min="0" max="20" step="0.5" value={rpm} onChange={(event) => setRpm(Math.min(20, Math.max(0, Number(event.target.value))))} /> rpm</dd></div><div><dt>Rotations</dt><dd><input aria-label="Sweep rotations" type="number" min="1" max="20" step="1" value={rotations} onChange={(event) => setRotations(Math.min(20, Math.max(1, Math.round(Number(event.target.value)))))} /> · {rpm > 0 ? `${(rotations * 60 / rpm).toFixed(2)} s simulated` : simulatedSpan(rpm)}</dd></div><div><dt>Work</dt><dd>{acquisitions} acquisitions/rotation · {acquisitions * rotations} total · {estimators.map((value) => value === 'geometric' ? 'Geometric boundary fit' : 'Contour matching').join(' + ')}</dd></div></dl><label className="check"><input type="checkbox" checked={intermediate} onChange={(event) => setIntermediate(event.target.checked)} /> Show intermediate rotation and acquisition progress</label></div></section>
+          <section className="sweep-target-review"><TargetDiagram target={config.target} /><div><h3>Target and run</h3><dl><div><dt>Geometry</dt><dd>{config.target.name}: Ø {config.target.outerDiameterMm} mm, hub R {config.target.hubRadiusMm} mm, {config.target.apertures.length} aperture{config.target.apertures.length === 1 ? '' : 's'}</dd></div><div><dt>Speed</dt><dd><NumberField label="Sweep RPM" value={rpm} min={0} max={20} step={0.5} onChange={setRpm} /> rpm</dd></div><div><dt>Rotations</dt><dd><NumberField label="Sweep rotations" value={rotations} min={1} max={20} step={1} integer onChange={setRotations} /> · {rpm > 0 ? `${(rotations * 60 / rpm).toFixed(2)} s simulated` : simulatedSpan(rpm)}</dd></div><div><dt>Work</dt><dd>{acquisitions} acquisitions/rotation · {acquisitions * rotations} total · {estimators.map((value) => value === 'geometric' ? 'Geometric boundary fit' : 'Contour matching').join(' + ')}</dd></div></dl><label className="check"><input type="checkbox" checked={intermediate} onChange={(event) => setIntermediate(event.target.checked)} /> Save intermediate acquisition checkpoints</label></div></section>
           <section><h3>Sensors</h3><div className="sweep-sensor-list">{config.sensors.map((sensor, index) => { const fov = sensorFovDeg(sensor); return <article key={sensor.instanceId}><strong>S{index + 1} · {sensor.name}</strong><span>{architectureName(sensor)} · {fov.horizontalDeg.toFixed(1)}° × {fov.verticalDeg.toFixed(1)}° FOV · {sensor.standOffM.toFixed(2)} m</span><span>{scanDetails(sensor)}</span><span>{sensor.timestampConvention.replaceAll('-', ' ')} timestamp</span></article> })}</div></section>
-          <section><h3>Estimated completion</h3><p><strong>{estimatedDuration({ ...config, rpm }, acquisitions * rotations, estimators)}</strong> on this device. The conservative estimate includes generated ray count, all global-search angles and every selected estimator; actual time depends on browser and hardware.</p></section>
-          <section><h3>Results destination</h3>{directorySupported ? <><p>A new folder containing CSV results, a JSON summary and the configuration will be created inside the location you choose.</p><div className="destination-row"><button type="button" onClick={chooseDirectory}>Choose parent folder</button><span>{directory ? `${directory.name}/${folderName}` : 'No folder selected'}</span></div>{pickerError && <p className="rejection">{pickerError}</p>}</> : <p>Folder access is unavailable in this browser. Continuing downloads one self-contained JSON results package named <strong>{folderName}.json</strong>.</p>}</section>
+          <section><h3>Estimated completion</h3><p><strong>{estimatedDuration(secondsPerAcquisition, acquisitions * rotations, intermediate)}</strong>. Based on a measured acquisition with the selected sensors and estimators, plus a 35% allowance. Orientation-dependent rejection and storage speed can change the actual duration.</p>{benchmarkError && <p className="rejection">Estimate unavailable: {benchmarkError}</p>}</section>
+          <section><h3>Results destination</h3>{directorySupported ? <><p>A new folder will contain acquisition CSV, summary JSON, pairwise offsets, run settings and configuration. When enabled, checkpoints are written during the sweep.</p><div className="destination-row"><button type="button" onClick={chooseDirectory}>Choose parent folder</button><span>{directory ? `${directory.name}/${folderName}` : 'No folder selected'}</span></div>{pickerError && <p className="rejection">{pickerError}</p>}</> : <p>Folder access is unavailable in this browser. Checkpoints remain in memory until completion or cancellation. Continuing downloads one self-contained JSON results package named <strong>{folderName}.json</strong>.</p>}</section>
         </div>
-        <footer><button ref={cancelButton} type="button" onClick={onCancel}>Cancel</button><button className="confirm-sweep" type="button" disabled={(directorySupported && !directory) || !Number.isFinite(rpm) || rpm < 0 || rpm > 20} onClick={() => onConfirm(directory, { rpm, rotations, intermediate }, folderName)}>{directorySupported ? 'Start and save sweep' : 'Start and download'}</button></footer>
+        <footer><button ref={cancelButton} type="button" onClick={onCancel}>Cancel</button><button className="confirm-sweep" type="button" disabled={(directorySupported && !directory) || !Number.isInteger(acquisitions) || acquisitions < 1 || !Number.isFinite(rpm) || rpm < 0 || rpm > 20} onClick={() => onConfirm(directory, { rpm, rotations, intermediate }, folderName)}>{directorySupported ? 'Start and save sweep' : 'Start and download'}</button></footer>
       </div>
     </div>
   )

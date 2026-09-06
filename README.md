@@ -39,25 +39,25 @@ npm run preview
 - Live single-, dual- and triple-aperture target editing with sensitivity, removed area, centre-of-mass and plate checks.
 - Seven shared sensor architectures and seventeen built-ins, each generated from its own scan kinematics rather than a stored density.
 - One to three sensors with independent stand-off and timestamp conventions.
-- A Three.js scene with rim-connected aperture cut-outs, architecture-specific translucent coverage geometry, distance annotations, orbit controls and optional coverage edges.
+- A Three.js scene with rim-connected aperture cut-outs, architecture-specific translucent coverage geometry, a sensor-colour legend, distance annotations, orbit controls and optional coverage edges.
 - Typed-array sample frames generated and estimated in a Web Worker.
 - Frozen-frame contour and geometric estimation grouped once per sensor, with thick truth/recovered templates, angle-error tables and cost curves.
 - Reviewed batch sweeps, independent background execution, error statistics, signed-error plots, cross-sensor time-offset recovery and organised result-folder export.
 - Configuration JSON import/export and a persistent custom sensor builder.
 - Six one-click teaching and validation scenarios.
 
-Sweep mode repeats the selected sensor acquisitions across one or more full target revolutions without rendering every frame. Before starting, a review shows the target diagram, independently selectable 0–20 RPM, revolution count, estimators, sensor specifications, conservative completion estimate and output destination. Optional intermediate detail reports acquisition and rotation progress. Supported browsers create a timestamped folder containing CSV results, a JSON summary and the exact configuration; other browsers download one self-contained JSON package. A separate worker keeps the live simulation responsive during the run.
+Sweep mode repeats acquisitions over one or more target revolutions; at 0 RPM it holds the selected orientation. The review shows geometry, sensors, 0–20 RPM, revolution count and a completion estimate measured using a trial acquisition in this browser. It keeps a snapshot of the reviewed settings while the live view continues independently. Supported browsers save acquisition CSV, summary JSON, pairwise offsets, run settings and configuration in a timestamped folder. Optional checkpoints are written during the run. Other browsers download a JSON package; checkpoints are retained in memory until completion or cancellation. A Cancel sweep button stops computation and preserves completed checkpoints.
 
 ![Face-on rotation view](docs/rotation-view.png)
 
 ## Preset scenarios
 
-- **Sparse ring failure:** demonstrates contour rejection on four scan rings.
+- **Sparse ring failure:** demonstrates contour rejection with two target-crossing rings from a four-channel sensor.
 - **Dense camera:** compares both estimators on global-shutter imagery.
 - **Aperture ablation:** explores the single-, dual- and triple-aperture sensitivity progression.
 - **Rolling shutter at rate:** contrasts global and sequential row exposure at speed.
 - **LiDAR–camera offset:** recovers the configured accumulation-to-exposure time offset.
-- **Resolution threshold:** downsamples camera geometry toward estimator rejection.
+- **Resolution threshold:** reduces FLIR width and height by four and increases effective pixel pitch by four, retaining the optical FOV and reducing band samples approximately sixteenfold.
 
 ## Adding a custom sensor
 
@@ -79,7 +79,7 @@ Angular sensitivity is
 Λ = Σ 2(R³ − ρₖ³) / 3
 ```
 
-where each annular-sector aperture contributes two radial boundaries. Angular dispersion scales as `SD ∝ Λ⁻¹ᐟ²`.
+where isolated annular sectors each contribute two radial boundaries. Touching sectors use their geometric union: a shared boundary contributes only its exposed radial segment, and matching inner radii remove that boundary entirely. Angular dispersion scales as `SD ∝ Λ⁻¹ᐟ²`. A target with no angular boundaries has unobservable orientation.
 
 Sector area is `α(R² − ρ²)/2`. Removed-sector centroid radius is
 
@@ -90,6 +90,10 @@ r̄ = (2/3) (R³ − ρ³)/(R² − ρ²) · sin(α/2)/(α/2)
 and remaining-plate eccentricity follows from removed-area moments. Plate checks use aluminium density 2700 kg/m³, `E = 70 GPa`, gravity 9.81 m/s² and a 0.05 mm deflection limit.
 
 The geometric boundary-fit estimator performs a configurable-resolution global 0–360° class-agreement search, applies a clipped boundary tolerance, then refines the best interval by golden-section search. The default coarse search step is 1°. Its local curvature proxy describes numerical sharpness near the selected minimum; it is not a statistical uncertainty.
+
+Both estimators reject unobservable and rotationally symmetric layouts before searching, independently of the search step. Two-dimensional support is measured from the working-band positions. Contour matching extracts angular regions and uses their measured end angles, avoiding a half-bin orientation offset. Frozen-frame estimation uses the exact displayed sample arrays. Paused geometry and sensor edits refresh those arrays and invalidate previous estimates.
+
+Sweep plots distinguish each sensor/estimator series and name sensors consistently. Pairwise offset is defined as the first sensor's observation/report lag minus the second's; the table compares recovered offsets with the expected lags over the same accepted pairs. Recovery assumes constant angular speed and is undefined at 0 RPM.
 
 ![Estimation overlay](docs/estimation-overlay.png)
 

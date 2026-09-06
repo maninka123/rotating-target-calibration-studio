@@ -15,5 +15,6 @@ export const scenarioConfiguration = (name: ScenarioName): SimulationConfig => {
   if (name === 'LiDAR–camera offset') return { ...common, target: structuredClone(DUAL_APERTURE), sensors: [placed('livox-avia', 0), placed('flir-global', 1)] }
   const camera = placed('flir-global', 0)
   camera.resolution = [484, 366]
+  camera.pixelPitchUm = camera.pixelPitchUm! * 4
   return { ...common, target: structuredClone(DUAL_APERTURE), sensors: [camera] }
 }

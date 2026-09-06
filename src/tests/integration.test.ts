@@ -114,7 +114,7 @@ const boundaryFrame = (count: number, apertureSamples: number): SampleFrame => {
   const phiRad = new Float64Array(count)
   const classes = new Uint8Array(count).fill(MATERIAL)
   for (let index = 0; index < apertureSamples; index += 1) { classes[index] = APERTURE; phiRad[index] = 0 }
-  for (let index = apertureSamples; index < count; index += 1) phiRad[index] = Math.PI / 2
+  for (let index = apertureSamples; index < count; index += 1) phiRad[index] = Math.PI / 2 + (index % 5) * 0.1
   return {
     sensorId: 'boundary', architecture: 'electronic-array', acquisitionIndex: 0, acquisitionStartS: 0, reportedTimeS: 0,
     meanObservationTimeS: 0, trueAngleAtReportedDeg: 0, trueAngleAtMeanDeg: 0,

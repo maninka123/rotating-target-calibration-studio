@@ -1,4 +1,4 @@
-import { apertureContains, DEG, wrapDeg, wrapRad } from './geometry'
+import { apertureContains, apertureRegions, angularSensitivity, DEG, wrapDeg, wrapRad } from './geometry'
 import type { EstimatorInput, EstimatorOutput } from './types'
 import { APERTURE, MATERIAL } from './types'
 
@@ -44,17 +44,24 @@ const goldenRefine = (fn: (angle: number) => number, lower: number, upper: numbe
   return { angle: (angle % 360 + 360) % 360, cost: fn(angle) }
 }
 
-const comparableMinimumCount = (costs: Float64Array, best: number): number => {
-  const tolerance = Math.max(1e-9, best * 0.02)
-  let count = 0
-  for (let i = 0; i < costs.length; i += 1) {
-    if (costs[i] <= costs[(i - 1 + costs.length) % costs.length] && costs[i] <= costs[(i + 1) % costs.length] && costs[i] <= best + tolerance) count += 1
+export const hasTwoDimensionalSupport = (input: EstimatorInput): boolean => {
+  let count = 0; let meanX = 0; let meanY = 0; let xx = 0; let yy = 0; let xy = 0
+  for (let index = 0; index < input.xMm.length; index += 1) {
+    if (!input.inWorkingBand[index]) continue
+    const x = input.xMm[index]; const y = input.yMm[index]
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false
+    count += 1
+    const dx = x - meanX; const dy = y - meanY
+    meanX += dx / count; meanY += dy / count
+    xx += dx * (x - meanX); yy += dy * (y - meanY); xy += dx * (y - meanY)
   }
-  return count
+  const trace = xx + yy
+  // A scale-independent covariance-rank test rejects points and single lines.
+  return count >= 3 && trace > 1e-12 && (xx * yy - xy * xy) / trace ** 2 > 1e-6
 }
 
 const targetSymmetryOrder = (input: EstimatorInput): number => {
-  const apertures = input.target.apertures
+  const apertures = apertureRegions(input.target)
   for (let order = apertures.length; order >= 2; order -= 1) {
     if (apertures.length % order) continue
     const step = 360 / order
@@ -69,8 +76,11 @@ const targetSymmetryOrder = (input: EstimatorInput): number => {
 
 export const geometricEstimate = (input: EstimatorInput): EstimatorOutput => {
   const base: EstimatorOutput = { estimator: 'geometric', accepted: false }
+  if (angularSensitivity(input.target) === 0) return { ...base, reason: 'orientation unobservable' }
+  const symmetryOrder = targetSymmetryOrder(input)
+  if (symmetryOrder > 1) return { ...base, reason: 'orientation ambiguous', ambiguityOrder: symmetryOrder }
   const indices = eligibleIndices(input)
-  if (!input.settings.twoDimensionalCoverage) return { ...base, reason: 'insufficient two-dimensional boundary coverage' }
+  if (!hasTwoDimensionalSupport(input)) return { ...base, reason: 'insufficient two-dimensional boundary coverage' }
   if (indices.length < 50) return { ...base, reason: 'fewer than 50 samples in working band' }
   let material = 0; let aperture = 0
   for (const index of indices) {
@@ -79,7 +89,8 @@ export const geometricEstimate = (input: EstimatorInput): EstimatorOutput => {
   }
   if (material < 3 || aperture < 3) return { ...base, reason: 'fewer than 3 samples in each class' }
 
-  const resolution = Math.min(10, Math.max(0.05, input.settings.searchResolutionDeg))
+  const resolution = input.settings.searchResolutionDeg
+  if (!Number.isFinite(resolution) || resolution < 0.05 || resolution > 10) throw new Error('Search resolution must be between 0.05 and 10 degrees')
   const steps = Math.ceil(360 / resolution)
   const costAnglesDeg = Float64Array.from({ length: steps }, (_, index) => index * 360 / steps)
   const costs = new Float64Array(steps)
@@ -88,10 +99,6 @@ export const geometricEstimate = (input: EstimatorInput): EstimatorOutput => {
     costs[index] = classCost(input, indices, costAnglesDeg[index])
     if (costs[index] < costs[bestIndex]) bestIndex = index
   }
-  const symmetryOrder = targetSymmetryOrder(input)
-  const minimumCount = comparableMinimumCount(costs, costs[bestIndex])
-  if (symmetryOrder > 1 && minimumCount > 1) return { ...base, reason: 'orientation ambiguous', ambiguityOrder: symmetryOrder, minimumCost: costs[bestIndex], costAnglesDeg, costs }
-
   const costFunction = (angle: number): number => classCost(input, indices, (angle % 360 + 360) % 360)
   const coarseStep = 360 / steps
   const refined = goldenRefine(costFunction, costAnglesDeg[bestIndex] - coarseStep, costAnglesDeg[bestIndex] + coarseStep)
@@ -109,10 +116,15 @@ const extractApertureSectors = (input: EstimatorInput, indices: Uint32Array): Ob
   const counts = new Uint32Array(bins)
   const minimumRadius = new Float64Array(bins).fill(Number.POSITIVE_INFINITY)
   const maximumRadius = new Float64Array(bins)
+  const minimumWithinBinDeg = new Float64Array(bins).fill(Number.POSITIVE_INFINITY)
+  const maximumWithinBinDeg = new Float64Array(bins)
   for (const index of indices) if (input.classes[index] === APERTURE) {
     const degrees = (input.phiRad[index] / DEG % 360 + 360) % 360
     const bin = Math.floor(degrees / 360 * bins) % bins
     counts[bin] += 1
+    const withinBin = degrees - bin * 360 / bins
+    minimumWithinBinDeg[bin] = Math.min(minimumWithinBinDeg[bin], withinBin)
+    maximumWithinBinDeg[bin] = Math.max(maximumWithinBinDeg[bin], withinBin)
     minimumRadius[bin] = Math.min(minimumRadius[bin], input.radiusMm[index])
     maximumRadius[bin] = Math.max(maximumRadius[bin], input.radiusMm[index])
   }
@@ -132,8 +144,12 @@ const extractApertureSectors = (input: EstimatorInput, indices: Uint32Array): Ob
     const next = occupied[(i + 1) % bins]
     if (runStart >= 0 && (!next || offset === bins)) {
       const runEnd = offset
-      const widthDeg = (runEnd - runStart + 1) * 360 / bins
-      const centreDeg = ((start + (runStart + runEnd) / 2) * 360 / bins % 360 + 360) % 360
+      // Use measured end angles within the bins rather than quantising the
+      // orientation to bin edges or centres. End bins always contain samples.
+      const firstAngle = (start + runStart) * 360 / bins + minimumWithinBinDeg[(start + runStart) % bins]
+      const lastAngle = (start + runEnd) * 360 / bins + maximumWithinBinDeg[(start + runEnd) % bins]
+      const widthDeg = lastAngle - firstAngle
+      const centreDeg = (((firstAngle + lastAngle) / 2) % 360 + 360) % 360
       const activeBins: number[] = []
       for (let runOffset = runStart; runOffset <= runEnd; runOffset += 1) {
         const bin = (start + runOffset) % bins
@@ -158,16 +174,20 @@ const extractApertureSectors = (input: EstimatorInput, indices: Uint32Array): Ob
 
 export const contourEstimate = (input: EstimatorInput): EstimatorOutput => {
   const base: EstimatorOutput = { estimator: 'contour', accepted: false }
-  if (!input.settings.twoDimensionalCoverage) return { ...base, reason: 'insufficient two-dimensional boundary coverage' }
+  if (angularSensitivity(input.target) === 0) return { ...base, reason: 'orientation unobservable' }
+  const symmetryOrder = targetSymmetryOrder(input)
+  if (symmetryOrder > 1) return { ...base, reason: 'orientation ambiguous', ambiguityOrder: symmetryOrder }
+  if (!hasTwoDimensionalSupport(input)) return { ...base, reason: 'insufficient two-dimensional boundary coverage' }
   if (input.settings.ringCount > 0 && input.settings.ringCount < 3) return { ...base, reason: 'insufficient boundary support' }
   const indices = eligibleIndices(input)
   if (indices.length < 250) return { ...base, reason: 'insufficient boundary support' }
   const observed = extractApertureSectors(input, indices)
-  if (observed.length < input.target.apertures.length) return { ...base, reason: 'insufficient boundary support' }
+  const regions = apertureRegions(input.target)
+  if (observed.length < regions.length) return { ...base, reason: 'insufficient boundary support' }
 
   const available = [...observed]
   const deltas: number[] = []
-  for (const expected of [...input.target.apertures].sort((a, b) => b.widthDeg - a.widthDeg)) {
+  for (const expected of [...regions].sort((a, b) => b.widthDeg - a.widthDeg)) {
     let best = -1; let mismatch = Number.POSITIVE_INFINITY
     for (let i = 0; i < available.length; i += 1) {
       const score = Math.abs(available[i].widthDeg - expected.widthDeg) + Math.abs(available[i].innerRadiusMm - expected.innerRadiusMm) / 20
