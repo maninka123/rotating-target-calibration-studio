@@ -100,6 +100,8 @@ Informational band counts, dual-aperture target, default stand-offs and acquisit
 
 The browser suite includes exact worker-frame comparison, paused refresh, stale-result invalidation, valid/invalid geometry edits, focus retention during playback, zero-value entry, FOV warning fixes, output saving, subpath loading and the existing 60-second three-sensor run. An initial parallel browser run timed out under shared rendering load; the final suite runs serially and passes in 1.5 minutes. The local run reused an explicitly started production preview because unopened loopback ports stalled readiness checks in this environment. CI retains automatic preview startup.
 
+The first hosted CI run passed all unit/build checks and six of seven browser tests. Its dense-camera result assertion timed out at the implicit five-second limit. That asynchronous assertion now uses the same 30-second allowance as the other estimator-output assertion; the expected count and all numerical expectations are unchanged. Hosted rerun status is available in the repository's CI history.
+
 ## Limits of this verification
 
 - The 100-rebuild unit test verifies disposal calls. It does not measure GPU-memory growth; no memory benchmark is claimed.

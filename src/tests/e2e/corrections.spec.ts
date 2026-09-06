@@ -56,7 +56,7 @@ test('paused frames refresh, frozen estimation uses identical arrays, and edits 
   await page.getByRole('button', { name: 'Dense camera', exact: true }).click()
   await expect(page.locator('.sensor-view').first()).toContainText('103,276')
   await page.getByTestId('run-estimators').click()
-  await expect(page.locator('.estimate-card')).toHaveCount(1)
+  await expect(page.locator('.estimate-card')).toHaveCount(1, { timeout: 30_000 })
   await page.getByRole('button', { name: 'Triple aperture', exact: true }).click()
   await expect(page.locator('.estimate-card')).toHaveCount(0)
   await page.getByLabel('Hub radius').fill('150')

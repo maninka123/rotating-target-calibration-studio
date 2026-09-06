@@ -85,5 +85,6 @@ This file records choices made where the specification allowed or required an im
 | Reference index mismatch | Place the face-on zero index at +X, matching target coordinates. |
 | Sensor coverage identification | Add a compact 3D overlay listing active sensor names and matching coverage swatches. It uses the same colour array as the rendered sensor volumes and updates on sensor changes. |
 | Browser-test environment | Allow an explicit preview port and reuse of an already-started test server. Defaults still start an isolated production build in CI; the local environment can stall on connections to unopened loopback ports. |
+| Dense-camera browser wait | Hosted CI exceeded the implicit five-second assertion wait for a full-resolution fit. Use the existing 30-second estimator-output allowance consistently, without changing expected results or numerical tolerances. |
 
 Remaining audit items outside this repair include the 500 ms animation update, fixed real-time badges, synchronous configuration-panel sampling, and the simplified scan/coverage-volume kinematics. These are not claimed fixed by the current validation.
