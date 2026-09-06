@@ -37,9 +37,9 @@ npm run preview
 ## What is included
 
 - Live single-, dual- and triple-aperture target editing with sensitivity, removed area, centre-of-mass and plate checks.
-- Seven shared sensor architectures and seventeen built-ins.
+- Seven shared sensor architectures and seventeen built-ins, each generated from its own scan kinematics rather than a stored density.
 - One to three sensors with independent stand-off and timestamp conventions.
-- A Three.js scene with rim-connected through-holes, adjustable translucent sensor fields of view, distance annotations, orbit controls and optional rays.
+- A Three.js scene with rim-connected through-holes, architecture-specific translucent coverage geometry, distance annotations, orbit controls and optional rays.
 - Typed-array sample frames generated and estimated in a Web Worker.
 - Frozen-frame contour and geometric estimation grouped once per sensor, with thick actual/recovered templates, angle-error tables and cost curves.
 - Reviewed batch sweeps, independent background execution, error statistics, signed-error plots, cross-sensor time-offset recovery and organised result-folder export.
@@ -68,6 +68,8 @@ For source-controlled sensors, add a JSON-serialisable object to `src/sensors/li
 ## Implemented physics
 
 For each sample ray, the target-plane intersection is evaluated analytically in double precision. Radius and polar angle determine material/aperture/background class at that sample’s own observation time. The background plane is visualised behind true through-holes. Only the annulus from hub radius to outer radius enters estimation.
+
+Rotating heads enumerate every channel and azimuth step, producing fixed-height scan rings. Risley-prism sensors trace acquisition-dependent rosettes. The micro-mirror uses a sinusoidal horizontal scan and a phase-shifted vertical scan whose triangular amplitude ramp produces an eye-shaped pattern. The Mid-360 uses its asymmetric −7° to +52° elevation limits and a non-repeating rotating-mirror pattern. Fixed arrays and cameras use rectangular angular grids; the single-plane scanner produces a zero-elevation fan.
 
 Angular sensitivity is
 

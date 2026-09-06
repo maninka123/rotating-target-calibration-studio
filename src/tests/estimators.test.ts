@@ -36,8 +36,8 @@ describe('estimator behaviour', () => {
     expect(result.reason).toBe('insufficient two-dimensional boundary coverage')
   })
 
-  it('Blickfeld has a non-zero rejection rate over 300 acquisitions', () => {
-    const sensor = placed('blickfeld-cube1', { timestampConvention: 'instantaneous' })
+  it('a sparse Blickfeld mode has a non-zero rejection rate over 300 acquisitions', () => {
+    const sensor = placed('blickfeld-cube1', { timestampConvention: 'instantaneous', sampleRateHz: 5000 })
     let rejected = 0
     for (let index = 0; index < 300; index += 1) {
       const result = geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 5, index * 1.2, 0, index), DUAL_APERTURE, 5)

@@ -122,6 +122,14 @@ test('target edits update both 3D views and keep hub radii consistent', async ({
   }
   const hubs = await page.locator('[data-hub-radius-mm]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-hub-radius-mm')))
   expect(new Set(hubs).size).toBe(1)
+  await page.getByRole('button', { name: 'Dual aperture', exact: true }).click()
+  await page.locator('.sensor-card select').first().selectOption('hdl-32e')
+  await expect(page.locator('.sensor-card').first()).toContainText('360° annular band')
+  await expect(page.locator('.sensor-view').first()).toContainText('Rings in band')
+  await expect(page.locator('.sensor-view').first()).toContainText(/Rings in band\s*18/)
+  await page.locator('.sensor-card select').first().selectOption('livox-mid360')
+  await expect(page.locator('.sensor-card').first()).toContainText('Asymmetric rotating band')
+  await expect(page.locator('.sensor-card').first()).toContainText('Target is clipped')
 })
 
 test('three sensors run for 60 seconds without console errors', async ({ page }) => {

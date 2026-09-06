@@ -6,7 +6,7 @@ import { generateFrame } from '../core/sampling'
 import { SCENARIO_NAMES, scenarioConfiguration } from '../core/scenarios'
 import type { Architecture, PlacedSensor, SampleFrame, SensorDefinition, TargetConfig, TimestampConvention } from '../core/types'
 import { APERTURE, MATERIAL } from '../core/types'
-import { byId, SENSOR_LIBRARY } from '../sensors/library'
+import { byId, COVERAGE_SHAPES, SENSOR_LIBRARY } from '../sensors/library'
 
 const representatives: Record<Architecture, string> = {
   'rotating-head': 'puck-hires', prism: 'livox-avia', 'micro-mirror': 'blickfeld-cube1', 'electronic-array': 'hesai-ft120',
@@ -28,6 +28,11 @@ describe('cross-architecture operation', () => {
 
   it('contains no stored nominal sample-count property', () => {
     for (const sensor of SENSOR_LIBRARY) expect(Object.keys(sensor)).not.toContain('nominalBandSamples')
+  })
+
+  it('assigns an architecture-specific coverage shape to every architecture', () => {
+    expect(new Set(Object.values(COVERAGE_SHAPES)).size).toBeGreaterThan(4)
+    for (const architecture of Object.keys(representatives) as Architecture[]) expect(COVERAGE_SHAPES[architecture]).toBeTruthy()
   })
 })
 

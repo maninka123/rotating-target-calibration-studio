@@ -9,12 +9,12 @@ export const SENSOR_LIBRARY: SensorDefinition[] = [
   { ...defaults, id: 'hdl-32e', name: 'Velodyne HDL-32E', architecture: 'rotating-head', standOffM: 1, horizontalFovDeg: 360, verticalFovDeg: 41.3, channelCount: 32, horizontalResolutionDeg: 0.18, headRateHz: 10 },
   { ...defaults, id: 'os1-64', name: 'Ouster OS1-64', architecture: 'rotating-head', standOffM: 1, horizontalFovDeg: 360, verticalFovDeg: 45, channelCount: 64, horizontalResolutionDeg: 0.18, headRateHz: 10 },
   { ...defaults, id: 'os1-128', name: 'Ouster OS1-128', architecture: 'rotating-head', standOffM: 1, horizontalFovDeg: 360, verticalFovDeg: 45, channelCount: 128, horizontalResolutionDeg: 0.18, headRateHz: 10 },
-  { ...defaults, id: 'livox-avia', name: 'Livox Avia', architecture: 'prism', standOffM: 1, horizontalFovDeg: 70.4, verticalFovDeg: 77.2, prismRateAHz: 173.3, prismRateBHz: -211.7, wedgeADeg: 5.9, wedgeBDeg: 6.6, sampleRateHz: 240000, timestampConvention: 'window-start' },
-  { ...defaults, id: 'livox-horizon', name: 'Livox Horizon', architecture: 'prism', standOffM: 1.2, horizontalFovDeg: 81.7, verticalFovDeg: 25.1, prismRateAHz: 89.1, prismRateBHz: -113.3, wedgeADeg: 6, wedgeBDeg: 4, sampleRateHz: 240000 },
-  { ...defaults, id: 'livox-tele15', name: 'Livox Tele-15', architecture: 'prism', standOffM: 1.82, horizontalFovDeg: 14.5, verticalFovDeg: 16.2, prismRateAHz: 75.7, prismRateBHz: -109.9, wedgeADeg: 3, wedgeBDeg: 3.5, sampleRateHz: 240000 },
-  { ...defaults, id: 'blickfeld-cube1', name: 'Blickfeld Cube 1', architecture: 'micro-mirror', standOffM: 1, horizontalFovDeg: 72, verticalFovDeg: 30, sampleRateHz: 97000, fastAxisHz: 137, slowAxisHz: 0.7 },
+  { ...defaults, id: 'livox-avia', name: 'Livox Avia', architecture: 'prism', standOffM: 1, horizontalFovDeg: 70.4, verticalFovDeg: 77.2, prismRateAHz: 173.3, prismRateBHz: -211.7, wedgeADeg: 5.9, wedgeBDeg: 6.6, sampleRateHz: 240000, timestampConvention: 'window-start', scanMode: 'Non-repetitive multi-line rosette mode' },
+  { ...defaults, id: 'livox-horizon', name: 'Livox Horizon', architecture: 'prism', standOffM: 1.2, horizontalFovDeg: 81.7, verticalFovDeg: 25.1, prismRateAHz: 89.1, prismRateBHz: -113.3, wedgeADeg: 6, wedgeBDeg: 4, sampleRateHz: 240000, scanMode: 'Non-repetitive rosette mode' },
+  { ...defaults, id: 'livox-tele15', name: 'Livox Tele-15', architecture: 'prism', standOffM: 1.82, horizontalFovDeg: 14.5, verticalFovDeg: 16.2, prismRateAHz: 75.7, prismRateBHz: -109.9, wedgeADeg: 3, wedgeBDeg: 3.5, sampleRateHz: 240000, scanMode: 'Non-repetitive rosette mode' },
+  { ...defaults, id: 'blickfeld-cube1', name: 'Blickfeld Cube 1', architecture: 'micro-mirror', standOffM: 1, horizontalFovDeg: 70, verticalFovDeg: 30, sampleRateHz: 97000, scanLinesPerFrame: 200, mirrorEigenfrequencyHz: 1000 },
   { ...defaults, id: 'hesai-ft120', name: 'Hesai FT120', architecture: 'electronic-array', standOffM: 1, horizontalFovDeg: 100, verticalFovDeg: 75, gridColumns: 120, gridRows: 90 },
-  { ...defaults, id: 'livox-mid360', name: 'Livox Mid-360', architecture: 'rotating-mirror', standOffM: 1, horizontalFovDeg: 360, verticalFovDeg: 59, sampleRateHz: 200000, emitterCount: 16, headRateHz: 10 },
+  { ...defaults, id: 'livox-mid360', name: 'Livox Mid-360', architecture: 'rotating-mirror', standOffM: 1, horizontalFovDeg: 360, verticalFovDeg: 59, elevationLowerDeg: -7, elevationUpperDeg: 52, sampleRateHz: 200000, emitterCount: 16, headRateHz: 10, scanMode: 'Hybrid rotating-mirror non-repetitive mode' },
   { ...defaults, id: 'single-plane', name: 'Single-plane scanner', architecture: 'single-plane', standOffM: 1, horizontalFovDeg: 120, verticalFovDeg: 30, horizontalResolutionDeg: 0.1, headRateHz: 10 },
   { ...defaults, id: 'flir-global', name: 'FLIR Blackfly S', architecture: 'camera', standOffM: 1, horizontalFovDeg: 94.9, verticalFovDeg: 79, resolution: [1936, 1464], focalLengthMm: 4, pixelPitchUm: 4.5, shutter: 'global', spectralBand: 'visible', timestampConvention: 'exposure-midpoint', integrationTimeS: 0.006 },
   { ...defaults, id: 'flir-rolling', name: 'FLIR Blackfly S — 20 ms rolling', architecture: 'camera', standOffM: 1, horizontalFovDeg: 94.9, verticalFovDeg: 79, resolution: [1936, 1464], focalLengthMm: 4, pixelPitchUm: 4.5, shutter: 'rolling', spectralBand: 'visible', timestampConvention: 'rolling-readout', integrationTimeS: 0.005 },
@@ -32,6 +32,10 @@ export const ARCHITECTURE_LABELS: Record<Architecture, string> = {
   'rotating-head': 'Rotating multi-channel head', prism: 'Counter-rotating prism', 'micro-mirror': 'Oscillating micro-mirror',
   'electronic-array': 'Solid-state electronic array', 'rotating-mirror': 'Rotating mirror', 'single-plane': 'Single-plane scanner', camera: 'Camera',
 }
+export const COVERAGE_SHAPES: Record<Architecture, string> = {
+  'rotating-head': '360° annular band', prism: 'Elliptical rosette cone', 'micro-mirror': 'Sparse eye-shaped envelope',
+  'electronic-array': 'Rectangular pyramid', 'rotating-mirror': 'Asymmetric rotating band', 'single-plane': 'Planar fan', camera: 'Rectangular pyramid',
+}
 export const customSensorErrors = (sensor: SensorDefinition): string[] => {
   const errors: string[] = []
   if (!sensor.name.trim()) errors.push('Name is required')
@@ -40,6 +44,8 @@ export const customSensorErrors = (sensor: SensorDefinition): string[] => {
   if (!(sensor.verticalFovDeg > 0 && sensor.verticalFovDeg < 180)) errors.push('Vertical FOV must be in (0, 180)')
   if (sensor.architecture === 'camera' && (!sensor.resolution || sensor.resolution.some((v) => v < 32) || !sensor.focalLengthMm || !sensor.pixelPitchUm)) errors.push('Camera optics and resolution are required')
   if (sensor.architecture === 'rotating-head' && (!sensor.channelCount || sensor.channelCount < 1)) errors.push('Channel count must be positive')
+  if (sensor.architecture === 'micro-mirror' && (!(sensor.scanLinesPerFrame && sensor.scanLinesPerFrame > 0) || !(sensor.mirrorEigenfrequencyHz && sensor.mirrorEigenfrequencyHz > 0))) errors.push('Scan lines and mirror eigenfrequency must be positive')
+  if (sensor.architecture === 'rotating-mirror' && sensor.elevationLowerDeg !== undefined && sensor.elevationUpperDeg !== undefined && sensor.elevationLowerDeg >= sensor.elevationUpperDeg) errors.push('Lower elevation must be below upper elevation')
   if (['prism', 'micro-mirror', 'rotating-mirror'].includes(sensor.architecture) && !(sensor.sampleRateHz && sensor.sampleRateHz > 0)) errors.push('Pulse rate must be positive')
   return errors
 }

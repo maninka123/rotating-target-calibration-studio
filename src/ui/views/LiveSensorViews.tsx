@@ -38,6 +38,7 @@ function SensorTile({ sensor, frame, target }: { sensor: PlacedSensor, frame?: S
         <span>Across target <strong>{frame?.samplesAcrossTarget.toFixed(0) ?? '—'}</strong></span>
         <span>True angle <strong>{frame?.trueAngleAtReportedDeg.toFixed(2) ?? '—'}°</strong></span>
         <span>Report − mean <strong>{frame ? ((frame.reportedTimeS - frame.meanObservationTimeS) * 1000).toFixed(1) : '—'} ms</strong></span>
+        {sensor.architecture === 'rotating-head' && <span>Rings in band <strong>{frame?.ringCount ?? '—'}</strong></span>}
       </div>
       {sensor.resolution && <div className="resolution-line">Raw resolution {sensor.resolution[0]} × {sensor.resolution[1]} · target spans {frame ? (frame.samplesAcrossTarget / sensor.resolution[1] * 100).toFixed(0) : '—'}% of frame height</div>}
     </article>

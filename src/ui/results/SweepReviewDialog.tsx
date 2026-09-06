@@ -22,7 +22,7 @@ const scanDetails = (sensor: PlacedSensor): string => {
   if (sensor.architecture === 'prism') return `${sensor.sampleRateHz?.toLocaleString()} pulses/s · ${sensor.integrationTimeS.toFixed(3)} s window · ${sensor.prismRateAHz}/${sensor.prismRateBHz} Hz prisms`
   if (sensor.architecture === 'rotating-head') return `${sensor.channelCount} channels · ${sensor.horizontalResolutionDeg}° horizontal step · ${sensor.headRateHz} Hz head`
   if (sensor.architecture === 'electronic-array') return `${sensor.gridColumns} × ${sensor.gridRows} fixed rays`
-  if (sensor.architecture === 'micro-mirror') return `${sensor.sampleRateHz?.toLocaleString()} pulses/s · ${sensor.fastAxisHz}/${sensor.slowAxisHz} Hz axes`
+  if (sensor.architecture === 'micro-mirror') return `${sensor.sampleRateHz?.toLocaleString()} pulses/s · ${sensor.scanLinesPerFrame} lines · ${sensor.mirrorEigenfrequencyHz} Hz eigenfrequency`
   if (sensor.architecture === 'rotating-mirror') return `${sensor.emitterCount} emitters · ${sensor.headRateHz} Hz mirror`
   return `${sensor.horizontalResolutionDeg}° scan step`
 }

@@ -90,5 +90,10 @@ export const minimumStandOffM = (outerRadiusMm: number, horizontalFovDeg: number
 export const targetFitsFov = (target: TargetConfig, horizontalFovDeg: number, verticalFovDeg: number, standOffM: number): boolean =>
   standOffM >= minimumStandOffM(target.outerDiameterMm / 2, horizontalFovDeg, verticalFovDeg)
 
+export const targetFitsElevationLimits = (target: TargetConfig, standOffM: number, lowerDeg: number, upperDeg: number): boolean => {
+  const angularRadius = Math.atan((target.outerDiameterMm / 2000) / standOffM) / DEG
+  return lowerDeg <= -angularRadius && upperDeg >= angularRadius
+}
+
 export const removedAreaRelativeTo = (target: TargetConfig, reference: TargetConfig): number =>
   apertureArea(target) - apertureArea(reference)

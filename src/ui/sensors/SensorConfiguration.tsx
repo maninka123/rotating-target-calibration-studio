@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { minimumStandOffM } from '../../core/geometry'
+import { minimumStandOffM, targetFitsElevationLimits } from '../../core/geometry'
 import { classCounts, generateFrame } from '../../core/sampling'
 import { parseCustomSensors, serialiseCustomSensors } from '../../core/config'
 import type { Architecture, PlacedSensor, SensorDefinition, TargetConfig, TimestampConvention } from '../../core/types'
-import { ARCHITECTURE_LABELS, SENSOR_LIBRARY, customSensorErrors } from '../../sensors/library'
+import { ARCHITECTURE_LABELS, COVERAGE_SHAPES, SENSOR_LIBRARY, customSensorErrors } from '../../sensors/library'
 import { NumberField } from '../shared/NumberField'
 import { Panel } from '../shared/Panel'
 
@@ -42,7 +42,10 @@ export function SensorConfiguration({ target, sensors, onChange }: Props) {
       <div className="sensor-stack">
         {sensors.map((sensor, index) => {
           const minimum = minimumStandOffM(target.outerDiameterMm / 2, sensor.horizontalFovDeg, sensor.verticalFovDeg)
-          const fits = sensor.standOffM >= minimum
+          const asymmetric = sensor.elevationLowerDeg !== undefined && sensor.elevationUpperDeg !== undefined
+          const fits = asymmetric
+            ? targetFitsElevationLimits(target, sensor.standOffM, sensor.elevationLowerDeg!, sensor.elevationUpperDeg!)
+            : sensor.standOffM >= minimum
           return (
             <article className="sensor-card" key={sensor.instanceId}>
               <div className="sensor-heading"><strong>S{index + 1}</strong><select value={sensor.id} onChange={(event) => replace(index, event.target.value)}>{library.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="icon danger" disabled={sensors.length === 1} onClick={() => onChange(sensors.filter((_, position) => position !== index))}>×</button></div>
@@ -53,8 +56,9 @@ export function SensorConfiguration({ target, sensors, onChange }: Props) {
                 {sensor.timestampConvention === 'rolling-readout' && <NumberField label="Readout" value={sensor.readoutTimeS * 1000} unit="ms" step={1} min={0} onChange={(value) => update(index, { readoutTimeS: value / 1000 })} />}
                 {sensor.architecture === 'rotating-head' && <NumberField label="Channels" value={sensor.channelCount ?? 16} min={1} max={256} onChange={(value) => update(index, { channelCount: value })} />}
               </div>
-              <div className={`fov-status ${fits ? 'ok' : 'bad'}`}><span>{fits ? 'Target fits field of view' : 'Target is clipped'} · minimum {minimum.toFixed(2)} m</span>{!fits && <button onClick={() => update(index, { standOffM: Number(minimum.toFixed(3)) })}>Apply minimum</button>}</div>
-              <div className="sensor-meta"><span>{ARCHITECTURE_LABELS[sensor.architecture]}</span><span>{sensor.resolution ? `${sensor.resolution[0]} × ${sensor.resolution[1]}` : `${sensor.horizontalFovDeg}° × ${sensor.verticalFovDeg}°`}</span></div>
+              <div className={`fov-status ${fits ? 'ok' : 'bad'}`}><span>{fits ? 'Target fits field of view' : 'Target is clipped'}{asymmetric ? ` · elevation ${sensor.elevationLowerDeg}° to +${sensor.elevationUpperDeg}°` : ` · minimum ${minimum.toFixed(2)} m`}</span>{!fits && !asymmetric && <button onClick={() => update(index, { standOffM: Number(minimum.toFixed(3)) })}>Apply minimum</button>}</div>
+              <div className="sensor-meta"><span>{ARCHITECTURE_LABELS[sensor.architecture]} · {COVERAGE_SHAPES[sensor.architecture]}</span><span>{sensor.resolution ? `${sensor.resolution[0]} × ${sensor.resolution[1]}` : asymmetric ? `360° × (${sensor.elevationLowerDeg}°…+${sensor.elevationUpperDeg}°)` : `${sensor.horizontalFovDeg}° × ${sensor.verticalFovDeg}°`}</span></div>
+              {sensor.scanMode && <div className="sensor-description">{sensor.scanMode}</div>}
             </article>
           )
         })}
@@ -86,6 +90,7 @@ function CustomBuilder({ target, onSave }: { target: TargetConfig, onSave: (sens
         <NumberField label="Vertical FOV" value={sensor.verticalFovDeg} unit="°" min={1} max={179} onChange={(value) => setSensor({ ...sensor, verticalFovDeg: value })} />
         <NumberField label="Stand-off" value={sensor.standOffM} unit="m" min={0.1} step={0.1} onChange={(value) => setSensor({ ...sensor, standOffM: value })} />
         {['prism', 'micro-mirror', 'rotating-mirror'].includes(sensor.architecture) && <NumberField label="Pulse rate" value={sensor.sampleRateHz ?? 10000} unit="Hz" min={100} onChange={(value) => setSensor({ ...sensor, sampleRateHz: value })} />}
+        {sensor.architecture === 'micro-mirror' && <><NumberField label="Scan lines/frame" value={sensor.scanLinesPerFrame ?? 200} min={2} onChange={(value) => setSensor({ ...sensor, scanLinesPerFrame: value })} /><NumberField label="Mirror eigenfrequency" value={sensor.mirrorEigenfrequencyHz ?? 1000} unit="Hz" min={1} onChange={(value) => setSensor({ ...sensor, mirrorEigenfrequencyHz: value })} /></>}
         {sensor.architecture === 'electronic-array' && <><NumberField label="Grid columns" value={sensor.gridColumns ?? 64} min={2} onChange={(value) => setSensor({ ...sensor, gridColumns: value })} /><NumberField label="Grid rows" value={sensor.gridRows ?? 48} min={2} onChange={(value) => setSensor({ ...sensor, gridRows: value })} /></>}
       </div>
       <p className="builder-summary">Estimated {summary.sampleCount.toLocaleString()} band samples · {summary.acrossTarget.toFixed(0)} samples across target</p>

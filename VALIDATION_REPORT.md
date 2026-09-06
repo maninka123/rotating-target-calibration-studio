@@ -21,34 +21,41 @@ Validated on 6 September 2026. Sampling is derived from scan geometry: no workin
 | Check | Actual | Result |
 | --- | --- | :---: |
 | All seven architectures generate and classify rays | Non-empty band for every representative | Pass |
-| All 17 built-ins load, fit at default stand-off and generate frames | 17/17 | Pass |
+| All 17 built-ins load and generate frames | 17/17; 16 fit fully and Mid-360 is intentionally clipped by its −7° lower limit | Pass |
 | Angular target extent at doubled stand-off | 1.979–2.000× reduction | Pass |
-| Puck, array, rotating mirror and camera area scaling | 3.875–4.008× fewer band rays | Pass |
-| Prism area scaling | Avia: 1.890× fewer | Pass within finite-pattern tolerance |
-| Micro-mirror area scaling | 1.856× fewer | **Does not meet ≈4×** |
+| Rotating-head area scaling | 2.707–4.127× fewer, depending on discrete ring transitions | Pass within finite-ring tolerance |
+| Prism area scaling | 1.890–4.086× fewer across the three finite rosettes | Pass within finite-pattern tolerance |
+| Micro-mirror area scaling | 3.759× fewer | Pass within finite-pattern tolerance |
+| Rotating-mirror area scaling | 3.240× fewer | Pass within finite-pattern tolerance |
+| Array and camera area scaling | 3.947–4.008× fewer | Pass |
 | Single-plane scaling | 2.000× fewer | **Does not meet ≈4×; expected for a line scan** |
-| Direct ring enumeration | 4, 16 and 32-channel cases match | Pass |
+| Exact rotating-head ring counts | C4 2; C8 6; Puck 12; HDL-32E 18; OS1-64 34; OS1-128 66 | Pass |
+| Per-ring chord samples | Outer-chord counts minus hub-chord counts equal generated working-band hits | Pass |
 | 2× camera downsampling in both dimensions | ≈4× fewer counted rays | Pass |
 | Camera samples-across-target units | FLIR 373.33 px; thermal and NIR both 51% of frame height | Pass |
 | Aperture/background classification invariants | Checked for every ray | Pass |
 | Solid/open target ray-count invariance | Counts identical | Pass |
 | Consecutive prism positions | Different | Pass |
+| Progressive prism fill | 100 ms occupies more angular cells than 20 ms | Pass |
 | Consecutive fixed-array positions | Identical | Pass |
+| Micro-mirror eye pattern | Midline density exceeds extreme density by more than 2×; extreme corners absent | Pass |
+| Mid-360 elevation limits | No ray below −7°; lower target clipped at 1.0 m | Pass |
+| Consecutive Mid-360 positions | Different | Pass |
 | Avia 100 ms trajectory complexity | More than 35 vertical crossings and more than 500 occupied spatial bins | Pass |
 | Avia centre coverage | Minimum ray radius is inside the 50 mm hub | Pass |
 
-The requested universal 4× band-count rule is not a geometry invariant for every finite non-uniform scan. The micro-mirror illuminates different portions of its pattern within a finite window, and a one-dimensional scanner scales with target diameter rather than area. These discrepancies are reported rather than tuning scan parameters to force a ratio.
+The requested universal 4× band-count rule is not a geometry invariant for finite non-uniform scans or discrete ring sets. A one-dimensional scanner scales with target diameter rather than area. These discrepancies are reported rather than tuning scan parameters to force a ratio.
 
 ## Informational band counts
 
 | Built-in | Band rays | Built-in | Band rays |
 | --- | ---: | --- | ---: |
-| LSLiDAR C4 | 222 | LSLiDAR C8 | 552 |
-| Velodyne Puck Hi-Res | 888 | Velodyne HDL-32E | 1,742 |
-| Ouster OS1-64 | 3,246 | Ouster OS1-128 | 6,526 |
+| LSLiDAR C4 | 222 | LSLiDAR C8 | 560 |
+| Velodyne Puck Hi-Res | 888 | Velodyne HDL-32E | 1,758 |
+| Ouster OS1-64 | 3,270 | Ouster OS1-128 | 6,558 |
 | Livox Avia | 3,701 | Livox Horizon | 4,205 |
-| Livox Tele-15 | 12,832 | Blickfeld Cube 1 | 1,435 |
-| Hesai FT120 | 600 | Livox Mid-360 | 372 |
+| Livox Tele-15 | 12,832 | Blickfeld Cube 1 | 1,703 |
+| Hesai FT120 | 600 | Livox Mid-360 | 337 |
 | Single-plane scanner | 180 | FLIR Blackfly S | 103,276 |
 | FLIR rolling readout | 103,276 | Thermal 640 × 512 | 50,544 |
 | Near-infrared 905 nm | 202,052 |  |  |
@@ -61,7 +68,7 @@ These values are not assertions and are not used as sampler inputs.
 | --- | --- | :---: |
 | Genuine sparse/dense camera comparison | 1,300/8,144 rays; 0.0596°/0.0177° mean error | Pass |
 | Prism contour sweep, 300 acquisitions | median 1.50°, mean 12.12°, 18 errors above 90° | Pass |
-| Micro-mirror sweep, 300 acquisitions | 119 rejections | Pass |
+| Sparse 5 kHz micro-mirror sweep, 300 acquisitions | 5 rejections | Pass |
 | Single-plane geometric rejection | `insufficient two-dimensional boundary coverage` | Pass |
 | Both estimators on every architecture | No throw for 7/7 | Pass |
 | Four timestamp conventions | Four distinct reported times | Pass |
@@ -84,7 +91,7 @@ These values are not assertions and are not used as sampler inputs.
 | --- | :---: |
 | TypeScript strict typecheck | Pass |
 | ESLint with zero warnings | Pass |
-| Unit suite: 112 tests | Pass |
+| Unit suite: 121 tests | Pass |
 | Production build | Pass |
 | Main application chunk reduced from about 1,023 kB to about 190 kB | Pass |
 | Three-dimensional renderer emitted as a lazy chunk | Pass |
@@ -96,6 +103,8 @@ These values are not assertions and are not used as sampler inputs.
 | Sweep/live isolation | Dedicated sweep worker leaves the simulation clock and live worker independent | Pass |
 | First-load notice | Persistence, focus trap, Escape dismissal, reopen and focus restoration | Pass |
 | Target designer layout | Preview begins level with presets; statistics directly follow aperture rows | Pass |
+| Architecture-specific 3D coverage | Annular/channel bands, asymmetric rotating band, elliptical cone, faint sparse envelope, planar fan and rectangular pyramids inspected | Pass |
+| Live rotating-head ring readout | HDL-32E reports 18 for the default dual-aperture target and updates with geometry | Pass |
 | Three-sensor 60-second run | Pass — non-zero live frames maintained; zero console errors |
 | Ten-second README demonstration capture | 50 frames, 867 × 600 px, 2.4 MB | Pass |
 

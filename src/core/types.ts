@@ -41,6 +41,8 @@ export interface SensorDefinition {
   standOffM: number
   horizontalFovDeg: number
   verticalFovDeg: number
+  elevationLowerDeg?: number
+  elevationUpperDeg?: number
   timestampConvention: TimestampConvention
   integrationTimeS: number
   readoutTimeS: number
@@ -54,14 +56,15 @@ export interface SensorDefinition {
   wedgeBDeg?: number
   gridColumns?: number
   gridRows?: number
-  fastAxisHz?: number
-  slowAxisHz?: number
+  scanLinesPerFrame?: number
+  mirrorEigenfrequencyHz?: number
   emitterCount?: number
   resolution?: [number, number]
   focalLengthMm?: number
   pixelPitchUm?: number
   shutter?: 'global' | 'rolling'
   spectralBand?: string
+  scanMode?: string
 }
 
 export interface PlacedSensor extends SensorDefinition {

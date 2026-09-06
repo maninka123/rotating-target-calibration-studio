@@ -11,6 +11,7 @@ export const channelElevationsDeg = (sensor: SensorDefinition): number[] => {
 }
 
 const scanSpanS = (sensor: SensorDefinition): number => {
+  if (sensor.architecture === 'micro-mirror') return Math.max(1, sensor.scanLinesPerFrame ?? 200) / (2 * Math.max(1, sensor.mirrorEigenfrequencyHz ?? 1000))
   if (sensor.architecture === 'rotating-head' || sensor.architecture === 'rotating-mirror' || sensor.architecture === 'single-plane') return 1 / (sensor.headRateHz ?? 10)
   if (sensor.architecture === 'camera' && sensor.shutter === 'rolling') return sensor.readoutTimeS
   return sensor.integrationTimeS
@@ -48,8 +49,28 @@ export const samplesAcrossTarget = (sensor: SensorDefinition, target: TargetConf
 }
 
 export const rotatingHeadBandRingCount = (sensor: SensorDefinition, target: TargetConfig): number => {
+  return rotatingHeadBandElevationsDeg(sensor, target).length
+}
+
+export const rotatingHeadBandElevationsDeg = (sensor: SensorDefinition, target: TargetConfig): number[] => {
   const outer = target.outerDiameterMm / 2000
-  return channelElevationsDeg(sensor).filter((elevation) => Math.abs(sensor.standOffM * Math.tan(elevation * DEG)) <= outer + 1e-12).length
+  return channelElevationsDeg(sensor).filter((elevation) => Math.abs(sensor.standOffM * Math.tan(elevation * DEG)) < outer)
+}
+
+export const rotatingHeadRingSampleCounts = (sensor: SensorDefinition, target: TargetConfig): number[] => {
+  const outerM = target.outerDiameterMm / 2000
+  const hubM = target.hubRadiusMm / 1000
+  const resolution = (sensor.horizontalResolutionDeg ?? 0.2) * DEG
+  const chordCount = (radius: number, height: number): number => {
+    if (Math.abs(height) >= radius) return 0
+    const halfChord = Math.sqrt(radius ** 2 - height ** 2)
+    return 2 * Math.floor(Math.atan(halfChord / sensor.standOffM) / resolution) + 1
+  }
+  return channelElevationsDeg(sensor).flatMap((elevation) => {
+    const height = sensor.standOffM * Math.tan(elevation * DEG)
+    if (Math.abs(height) >= outerM) return []
+    return [chordCount(outerM, height) - chordCount(hubM, height)]
+  })
 }
 
 export const generateFrame = (
@@ -84,9 +105,9 @@ export const generateFrame = (
       const azimuthIndex = Math.floor(index / channels)
       const azimuth = (-180 + 360 * azimuthIndex / azimuthSteps) * DEG
       const elevation = elevations[channel] * DEG
-      direction[0] = Math.cos(elevation) * Math.sin(azimuth)
-      direction[1] = Math.sin(elevation)
-      direction[2] = Math.cos(elevation) * Math.cos(azimuth)
+      direction[0] = Math.sin(azimuth)
+      direction[1] = Math.tan(elevation) * Math.cos(azimuth)
+      direction[2] = Math.cos(azimuth)
       fraction = azimuthIndex / Math.max(1, azimuthSteps - 1)
     } else if (sensor.architecture === 'prism') {
       const time = fraction * span
@@ -104,9 +125,12 @@ export const generateFrame = (
       direction[2] = 1
     } else if (sensor.architecture === 'micro-mirror') {
       const time = fraction * span
-      direction[0] = Math.tan(sensor.horizontalFovDeg * DEG / 2) * Math.sin(TAU * (sensor.fastAxisHz ?? 137) * time + acquisitionIndex * 0.37)
-      const ramp = 2 * ((time * (sensor.slowAxisHz ?? 0.7) + acquisitionIndex * 0.173 + 0.5) % 1) - 1
-      direction[1] = Math.tan(sensor.verticalFovDeg * DEG / 2) * ramp
+      const carrier = TAU * (sensor.mirrorEigenfrequencyHz ?? 1000) * time + acquisitionIndex * 0.37
+      const ramp = 1 - Math.abs(2 * fraction - 1)
+      const horizontal = sensor.horizontalFovDeg * DEG / 2 * Math.sin(carrier)
+      const vertical = ramp * sensor.verticalFovDeg * DEG / 2 * Math.sin(carrier + Math.PI / 4)
+      direction[0] = Math.tan(horizontal)
+      direction[1] = Math.tan(vertical)
       direction[2] = 1
     } else if (sensor.architecture === 'electronic-array') {
       const columns = Math.max(1, Math.round(sensor.gridColumns ?? 1))
@@ -118,14 +142,20 @@ export const generateFrame = (
       direction[0] = Math.tan(ax * DEG); direction[1] = Math.tan(ay * DEG); direction[2] = 1
       fraction = 0.5
     } else if (sensor.architecture === 'rotating-mirror') {
-      const emitters = Math.max(1, Math.round(sensor.emitterCount ?? 8))
+      const emitters = Math.max(1, Math.round(sensor.emitterCount ?? 16))
       const emitter = index % emitters
-      const elevation = emitters === 1 ? 0 : -sensor.verticalFovDeg / 2 + sensor.verticalFovDeg * emitter / (emitters - 1)
-      const time = fraction * span
-      const azimuth = (TAU * (sensor.headRateHz ?? 10) * time + acquisitionIndex * 0.29) % TAU
-      direction[0] = Math.cos(elevation * DEG) * Math.sin(azimuth)
-      direction[1] = Math.sin(elevation * DEG)
-      direction[2] = Math.cos(elevation * DEG) * Math.cos(azimuth)
+      const azimuthSteps = Math.ceil(total / emitters)
+      const azimuthIndex = Math.floor(index / emitters)
+      fraction = azimuthIndex / Math.max(1, azimuthSteps - 1)
+      const lower = sensor.elevationLowerDeg ?? -sensor.verticalFovDeg / 2
+      const upper = sensor.elevationUpperDeg ?? sensor.verticalFovDeg / 2
+      const nonRepeatingPhase = acquisitionIndex * Math.SQRT2 + azimuthIndex * (Math.sqrt(5) - 2)
+      const emitterPosition = (emitter + 0.5 + 0.45 * Math.sin(TAU * nonRepeatingPhase)) / emitters
+      const elevation = lower + (upper - lower) * emitterPosition
+      const azimuth = (-sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * fraction) * DEG
+      direction[0] = Math.sin(azimuth)
+      direction[1] = Math.tan(elevation * DEG) * Math.cos(azimuth)
+      direction[2] = Math.cos(azimuth)
     } else if (sensor.architecture === 'single-plane') {
       const azimuth = (-sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * fraction) * DEG
       direction[0] = Math.sin(azimuth); direction[1] = 0; direction[2] = Math.cos(azimuth)

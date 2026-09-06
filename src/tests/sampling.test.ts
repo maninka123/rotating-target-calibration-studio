@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { apertureContains, DEG, minimumStandOffM } from '../core/geometry'
+import { apertureContains, DEG, minimumStandOffM, targetFitsElevationLimits } from '../core/geometry'
 import { DUAL_APERTURE } from '../core/presets'
-import { channelElevationsDeg, classCounts, generateFrame, rotatingHeadBandRingCount, samplesAcrossTarget } from '../core/sampling'
+import { channelElevationsDeg, classCounts, generateFrame, rotatingHeadBandElevationsDeg, rotatingHeadBandRingCount, rotatingHeadRingSampleCounts, samplesAcrossTarget } from '../core/sampling'
 import type { Architecture, PlacedSensor } from '../core/types'
 import { APERTURE, BACKGROUND } from '../core/types'
 import { byId, SENSOR_LIBRARY } from '../sensors/library'
@@ -20,9 +20,10 @@ describe('scan geometry', () => {
     expect(classCounts(frame).band).toBeGreaterThan(0)
   })
 
-  it.each(SENSOR_LIBRARY.map((sensor) => [sensor.id] as const))('%s loads, fits at default stand-off, and produces a frame', (id) => {
+  it.each(SENSOR_LIBRARY.map((sensor) => [sensor.id] as const))('%s loads, has the expected FOV status, and produces a frame', (id) => {
     const sensor = placed(id)
-    expect(sensor.standOffM + 0.005).toBeGreaterThanOrEqual(minimumStandOffM(210, sensor.horizontalFovDeg, sensor.verticalFovDeg))
+    if (sensor.id === 'livox-mid360') expect(targetFitsElevationLimits(DUAL_APERTURE, sensor.standOffM, sensor.elevationLowerDeg!, sensor.elevationUpperDeg!)).toBe(false)
+    else expect(sensor.standOffM + 0.005).toBeGreaterThanOrEqual(minimumStandOffM(210, sensor.horizontalFovDeg, sensor.verticalFovDeg))
     expect(generateFrame(sensor, DUAL_APERTURE, 0, 0, 0).classes.length).toBeGreaterThan(0)
   })
 
@@ -47,11 +48,21 @@ describe('scan geometry', () => {
     expect(near / far).toBeCloseTo(2, 1)
   })
 
-  it.each([4, 16, 32])('directly enumerates working-band rings for %i channels', (channelCount) => {
-    const sensor = placed('puck-hires', { channelCount })
-    const direct = channelElevationsDeg(sensor).filter((angle) => Math.abs(sensor.standOffM * Math.tan(angle * DEG)) <= DUAL_APERTURE.outerDiameterMm / 2000).length
-    expect(rotatingHeadBandRingCount(sensor, DUAL_APERTURE)).toBe(direct)
-    expect(generateFrame(sensor, DUAL_APERTURE, 0, 0, 0).ringCount).toBe(direct)
+  it.each([
+    ['ls-c4', 2], ['ls-c8', 6], ['puck-hires', 12], ['hdl-32e', 18], ['os1-64', 34], ['os1-128', 66],
+  ] as const)('%s has exactly %i rings crossing the target band', (id, expected) => {
+    const sensor = placed(id)
+    const direct = channelElevationsDeg(sensor).filter((angle) => Math.abs(sensor.standOffM * Math.tan(angle * DEG)) < DUAL_APERTURE.outerDiameterMm / 2000).length
+    expect(direct).toBe(expected)
+    expect(rotatingHeadBandRingCount(sensor, DUAL_APERTURE)).toBe(expected)
+    expect(rotatingHeadBandElevationsDeg(sensor, DUAL_APERTURE)).toHaveLength(expected)
+    expect(generateFrame(sensor, DUAL_APERTURE, 0, 0, 0).ringCount).toBe(expected)
+  })
+
+  it('rotating-head chord counts equal the number of generated rays in the working band', () => {
+    const sensor = placed('hdl-32e')
+    const frame = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0)
+    expect(classCounts(frame).band).toBe(rotatingHeadRingSampleCounts(sensor, DUAL_APERTURE).reduce((sum, count) => sum + count, 0))
   })
 
   it('camera ray counting falls by approximately four after 2x downsampling', () => {
@@ -118,6 +129,61 @@ describe('scan geometry', () => {
     let minimumRadius = Number.POSITIVE_INFINITY
     for (const radius of frame.radiusMm) minimumRadius = Math.min(minimumRadius, radius)
     expect(minimumRadius).toBeLessThan(DUAL_APERTURE.hubRadiusMm)
+  })
+
+  it('prism coverage fills progressively with integration time', () => {
+    const occupied = (duration: number) => {
+      const sensor = placed('livox-avia', { integrationTimeS: duration })
+      const frame = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0, 0)
+      const bins = new Set<string>()
+      for (let index = 0; index < frame.xMm.length; index += 1) {
+        const xAngle = Math.atan(frame.xMm[index] / (sensor.standOffM * 1000)) / DEG
+        const yAngle = Math.atan(frame.yMm[index] / (sensor.standOffM * 1000)) / DEG
+        bins.add(`${Math.floor(xAngle + sensor.horizontalFovDeg / 2)}:${Math.floor(yAngle + sensor.verticalFovDeg / 2)}`)
+      }
+      return bins.size
+    }
+    expect(occupied(0.1)).toBeGreaterThan(occupied(0.02))
+  })
+
+  it('micro-mirror forms an eye with lower density at vertical extremes than the midline', () => {
+    const sensor = placed('blickfeld-cube1')
+    const frame = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0)
+    let midline = 0
+    let extremes = 0
+    let corner = 0
+    for (let index = 0; index < frame.xMm.length; index += 1) {
+      const horizontal = Math.abs(Math.atan(frame.xMm[index] / 1000) / DEG) / (sensor.horizontalFovDeg / 2)
+      const vertical = Math.abs(Math.atan(frame.yMm[index] / 1000) / DEG) / (sensor.verticalFovDeg / 2)
+      if (vertical < 0.1) midline += 1
+      if (vertical > 0.8) extremes += 1
+      if (horizontal > 0.98 && vertical > 0.98) corner += 1
+    }
+    expect(midline).toBeGreaterThan(extremes * 2)
+    expect(corner).toBe(0)
+  })
+
+  it('Mid-360 respects its -7 to +52 degree elevation limits and clips the target', () => {
+    const sensor = placed('livox-mid360')
+    const frame = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0)
+    let minimumElevation = Number.POSITIVE_INFINITY
+    let lowestTargetHit = Number.POSITIVE_INFINITY
+    for (let index = 0; index < frame.yMm.length; index += 1) {
+      if (!Number.isFinite(frame.yMm[index])) continue
+      minimumElevation = Math.min(minimumElevation, Math.atan(frame.yMm[index] / (sensor.standOffM * 1000)) / DEG)
+      if (frame.radiusMm[index] <= DUAL_APERTURE.outerDiameterMm / 2) lowestTargetHit = Math.min(lowestTargetHit, frame.yMm[index])
+    }
+    expect(minimumElevation).toBeGreaterThanOrEqual(-7 - 1e-9)
+    expect(lowestTargetHit).toBeGreaterThan(-DUAL_APERTURE.outerDiameterMm / 2)
+    expect(classCounts(frame).band).toBeGreaterThan(0)
+  })
+
+  it('Mid-360 consecutive frames use different non-repeating positions', () => {
+    const sensor = placed('livox-mid360')
+    const first = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0, 0)
+    const second = generateFrame(sensor, DUAL_APERTURE, 0, 0, 0, 1)
+    const changed = first.yMm.some((value, index) => Number.isFinite(value) && Number.isFinite(second.yMm[index]) && Math.abs(value - second.yMm[index]) > 1e-6)
+    expect(changed).toBe(true)
   })
 
   it('solid-state acquisitions have identical fixed positions', () => {

@@ -3,6 +3,7 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { OrbitControls as ThreeOrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { PlacedSensor, TargetConfig } from '../core/types'
+import { rotatingHeadBandElevationsDeg } from '../core/sampling'
 import { targetGeometrySignature } from '../core/viewGeometry'
 import { TargetMesh } from './TargetMesh'
 
@@ -18,34 +19,92 @@ interface Props {
   fovOpacity: number
 }
 
-function Frustum({ sensor, index, showRays, showFov, opacity }: { sensor: PlacedSensor, index: number, showRays: boolean, showFov: boolean, opacity: number }) {
-  const z = sensor.standOffM
-  const halfWidth = Math.tan(sensor.horizontalFovDeg * Math.PI / 360) * z
-  const halfHeight = Math.tan(sensor.verticalFovDeg * Math.PI / 360) * z
-  const { lines, surface } = useMemo(() => {
-    const origin = new THREE.Vector3(0, 0, z)
-    const corners = [
-      new THREE.Vector3(-halfWidth, -halfHeight, 0), new THREE.Vector3(halfWidth, -halfHeight, 0),
-      new THREE.Vector3(halfWidth, halfHeight, 0), new THREE.Vector3(-halfWidth, halfHeight, 0),
-    ]
-    const values: THREE.Vector3[] = []
-    corners.forEach((corner) => values.push(origin, corner))
-    for (let i = 0; i < 4; i += 1) values.push(corners[i], corners[(i + 1) % 4])
-    const triangles: number[] = []
-    for (let i = 0; i < 4; i += 1) {
-      for (const point of [origin, corners[i], corners[(i + 1) % 4]]) triangles.push(point.x, point.y, point.z)
+type CoverageGeometry = { lines: THREE.BufferGeometry, surface: THREE.BufferGeometry, channelLines?: THREE.BufferGeometry }
+
+const rectangularCoverage = (sensor: PlacedSensor, length: number): CoverageGeometry => {
+  const halfWidth = Math.tan(sensor.horizontalFovDeg * Math.PI / 360) * length
+  const halfHeight = Math.tan(sensor.verticalFovDeg * Math.PI / 360) * length
+  const origin = new THREE.Vector3()
+  const corners = [new THREE.Vector3(-halfWidth, -halfHeight, -length), new THREE.Vector3(halfWidth, -halfHeight, -length), new THREE.Vector3(halfWidth, halfHeight, -length), new THREE.Vector3(-halfWidth, halfHeight, -length)]
+  const linePoints: THREE.Vector3[] = []
+  corners.forEach((corner) => linePoints.push(origin, corner))
+  for (let index = 0; index < 4; index += 1) linePoints.push(corners[index], corners[(index + 1) % 4])
+  const triangles: THREE.Vector3[] = []
+  for (let index = 0; index < 4; index += 1) triangles.push(origin, corners[index], corners[(index + 1) % 4])
+  return { lines: new THREE.BufferGeometry().setFromPoints(linePoints), surface: new THREE.BufferGeometry().setFromPoints(triangles) }
+}
+
+const ellipticalConeCoverage = (sensor: PlacedSensor, length: number): CoverageGeometry => {
+  const segments = 64
+  const rx = Math.tan(sensor.horizontalFovDeg * Math.PI / 360) * length
+  const ry = Math.tan(sensor.verticalFovDeg * Math.PI / 360) * length
+  const rim = Array.from({ length: segments }, (_, index) => new THREE.Vector3(rx * Math.cos(index / segments * Math.PI * 2), ry * Math.sin(index / segments * Math.PI * 2), -length))
+  const lines: THREE.Vector3[] = []
+  const triangles: THREE.Vector3[] = []
+  for (let index = 0; index < segments; index += 1) {
+    const next = rim[(index + 1) % segments]
+    lines.push(rim[index], next)
+    triangles.push(new THREE.Vector3(), rim[index], next)
+  }
+  for (let index = 0; index < 8; index += 1) lines.push(new THREE.Vector3(), rim[index * 8])
+  return { lines: new THREE.BufferGeometry().setFromPoints(lines), surface: new THREE.BufferGeometry().setFromPoints(triangles) }
+}
+
+const bandCoverage = (sensor: PlacedSensor, length: number, target: TargetConfig): CoverageGeometry => {
+  const segments = 96
+  const lower = (sensor.elevationLowerDeg ?? -sensor.verticalFovDeg / 2) * Math.PI / 180
+  const upper = (sensor.elevationUpperDeg ?? sensor.verticalFovDeg / 2) * Math.PI / 180
+  const azimuthSpan = (sensor.architecture === 'rotating-head' ? 360 : sensor.horizontalFovDeg) * Math.PI / 180
+  const azimuthStart = -azimuthSpan / 2
+  const point = (azimuth: number, elevation: number) => new THREE.Vector3(
+    length * Math.cos(elevation) * Math.sin(azimuth),
+    length * Math.sin(elevation),
+    -length * Math.cos(elevation) * Math.cos(azimuth),
+  )
+  const triangles: THREE.Vector3[] = []
+  const lines: THREE.Vector3[] = []
+  for (let index = 0; index < segments; index += 1) {
+    const azimuth = azimuthStart + index / segments * azimuthSpan
+    const next = azimuthStart + (index + 1) / segments * azimuthSpan
+    const a = point(azimuth, lower); const b = point(next, lower); const c = point(next, upper); const d = point(azimuth, upper)
+    triangles.push(a, b, c, a, c, d)
+    lines.push(a, b, d, c)
+  }
+  const channelPoints: THREE.Vector3[] = []
+  if (sensor.architecture === 'rotating-head') {
+    for (const elevationDeg of rotatingHeadBandElevationsDeg(sensor, target)) {
+      for (let index = 0; index < segments; index += 1) channelPoints.push(point(index / segments * Math.PI * 2, elevationDeg * Math.PI / 180), point((index + 1) / segments * Math.PI * 2, elevationDeg * Math.PI / 180))
     }
-    for (const point of [corners[0], corners[1], corners[2], corners[0], corners[2], corners[3]]) triangles.push(point.x, point.y, point.z)
-    const fill = new THREE.BufferGeometry()
-    fill.setAttribute('position', new THREE.Float32BufferAttribute(triangles, 3)); fill.computeVertexNormals()
-    return { lines: new THREE.BufferGeometry().setFromPoints(values), surface: fill }
-  }, [halfWidth, halfHeight, z])
-  useEffect(() => () => { lines.dispose(); surface.dispose() }, [lines, surface])
+  }
+  return { lines: new THREE.BufferGeometry().setFromPoints(lines), surface: new THREE.BufferGeometry().setFromPoints(triangles), channelLines: new THREE.BufferGeometry().setFromPoints(channelPoints) }
+}
+
+const fanCoverage = (sensor: PlacedSensor, length: number): CoverageGeometry => {
+  const segments = 64
+  const points = Array.from({ length: segments + 1 }, (_, index) => {
+    const angle = (-sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * index / segments) * Math.PI / 180
+    return new THREE.Vector3(length * Math.sin(angle), 0, -length * Math.cos(angle))
+  })
+  const triangles: THREE.Vector3[] = []
+  for (let index = 0; index < segments; index += 1) triangles.push(new THREE.Vector3(), points[index], points[index + 1])
+  return { lines: new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), points[0], ...points.flatMap((point, index) => index ? [points[index - 1], point] : []), points.at(-1)!, new THREE.Vector3()]), surface: new THREE.BufferGeometry().setFromPoints(triangles) }
+}
+
+function SensorCoverage({ sensor, target, index, showRays, showFov, opacity }: { sensor: PlacedSensor, target: TargetConfig, index: number, showRays: boolean, showFov: boolean, opacity: number }) {
+  const length = sensor.standOffM * 1.05
+  const { lines, surface, channelLines } = useMemo(() => {
+    if (sensor.architecture === 'rotating-head' || sensor.architecture === 'rotating-mirror') return bandCoverage(sensor, length, target)
+    if (sensor.architecture === 'prism') return ellipticalConeCoverage(sensor, length)
+    if (sensor.architecture === 'single-plane') return fanCoverage(sensor, length)
+    return rectangularCoverage(sensor, length)
+  }, [sensor, length, target])
+  useEffect(() => () => { lines.dispose(); surface.dispose(); channelLines?.dispose() }, [lines, surface, channelLines])
   const colour = SENSOR_COLOURS[index] ?? SENSOR_COLOURS[0]
+  const fillOpacity = sensor.architecture === 'micro-mirror' ? opacity * 0.45 : opacity
   return (
-    <group position={[index * 0.035 - 0.035, 0, 0]}>
-      {showFov && <><mesh geometry={surface}><meshBasicMaterial color={colour} transparent opacity={opacity} depthWrite={false} side={THREE.DoubleSide} /></mesh><lineSegments geometry={lines}><lineBasicMaterial color={colour} transparent opacity={Math.min(.8, opacity * 3 + .2)} /></lineSegments></>}
-      <mesh position={[0, 0, z]}><boxGeometry args={[0.06, 0.04, 0.08]} /><meshStandardMaterial color={colour} /></mesh>
+    <group position={[index * 0.035 - 0.035, 0, sensor.standOffM]}>
+      {showFov && <><mesh geometry={surface}><meshBasicMaterial color={colour} transparent opacity={fillOpacity} depthWrite={false} side={THREE.DoubleSide} /></mesh><lineSegments geometry={lines}><lineBasicMaterial color={colour} transparent opacity={Math.min(.8, opacity * 3 + .2)} /></lineSegments>{channelLines && <lineSegments geometry={channelLines}><lineBasicMaterial color={colour} transparent opacity={0.32} /></lineSegments>}</>}
+      <mesh><boxGeometry args={[0.06, 0.04, 0.08]} /><meshStandardMaterial color={colour} /></mesh>
       {showRays && <lineSegments geometry={lines}><lineBasicMaterial color="#d58b49" transparent opacity={0.28} /></lineSegments>}
     </group>
   )
@@ -113,7 +172,7 @@ export function SceneViewport(props: Props) {
         <mesh position={[0, 0, -props.target.backgroundDistanceM]} receiveShadow><planeGeometry args={[2.4, 2.4]} /><meshStandardMaterial color="#a9b9bd" roughness={1} /></mesh>
         <TargetMesh target={props.target} angleDeg={props.angleDeg} playing={props.playing} rpm={props.rpm} />
         {props.showDimensions && <EngineeringDimensions target={props.target} sensors={props.sensors} />}
-        {props.sensors.map((sensor, index) => <Frustum key={sensor.instanceId} sensor={sensor} index={index} showRays={props.showRays} showFov={props.showFov} opacity={props.fovOpacity} />)}
+        {props.sensors.map((sensor, index) => <SensorCoverage key={sensor.instanceId} sensor={sensor} target={props.target} index={index} showRays={props.showRays} showFov={props.showFov} opacity={props.fovOpacity} />)}
         <OrbitController />
       </Canvas>
       <div className="realtime-badge">Simulation · 1.00× real time</div>
