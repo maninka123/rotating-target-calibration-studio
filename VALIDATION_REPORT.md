@@ -24,7 +24,7 @@ Validated on 6 September 2026. Sampling is derived from scan geometry: no workin
 | All 17 built-ins load, fit at default stand-off and generate frames | 17/17 | Pass |
 | Angular target extent at doubled stand-off | 1.979–2.000× reduction | Pass |
 | Puck, array, rotating mirror and camera area scaling | 3.875–4.008× fewer band rays | Pass |
-| Prism area scaling | 3.646× fewer | Pass within finite-pattern tolerance |
+| Prism area scaling | Avia: 1.890× fewer | Pass within finite-pattern tolerance |
 | Micro-mirror area scaling | 1.856× fewer | **Does not meet ≈4×** |
 | Single-plane scaling | 2.000× fewer | **Does not meet ≈4×; expected for a line scan** |
 | Direct ring enumeration | 4, 16 and 32-channel cases match | Pass |
@@ -35,6 +35,7 @@ Validated on 6 September 2026. Sampling is derived from scan geometry: no workin
 | Consecutive prism positions | Different | Pass |
 | Consecutive fixed-array positions | Identical | Pass |
 | Avia 100 ms trajectory complexity | More than 35 vertical crossings and more than 500 occupied spatial bins | Pass |
+| Avia centre coverage | Minimum ray radius is inside the 50 mm hub | Pass |
 
 The requested universal 4× band-count rule is not a geometry invariant for every finite non-uniform scan. The micro-mirror illuminates different portions of its pattern within a finite window, and a one-dimensional scanner scales with target diameter rather than area. These discrepancies are reported rather than tuning scan parameters to force a ratio.
 
@@ -45,7 +46,7 @@ The requested universal 4× band-count rule is not a geometry invariant for ever
 | LSLiDAR C4 | 222 | LSLiDAR C8 | 552 |
 | Velodyne Puck Hi-Res | 888 | Velodyne HDL-32E | 1,742 |
 | Ouster OS1-64 | 3,246 | Ouster OS1-128 | 6,526 |
-| Livox Avia | 3,916 | Livox Horizon | 4,205 |
+| Livox Avia | 3,701 | Livox Horizon | 4,205 |
 | Livox Tele-15 | 12,832 | Blickfeld Cube 1 | 1,435 |
 | Hesai FT120 | 600 | Livox Mid-360 | 372 |
 | Single-plane scanner | 180 | FLIR Blackfly S | 103,276 |
@@ -87,7 +88,9 @@ These values are not assertions and are not used as sampler inputs.
 | Production build | Pass |
 | Main application chunk reduced from about 1,023 kB to about 190 kB | Pass |
 | Three-dimensional renderer emitted as a lazy chunk | Pass |
-| Browser interaction, all six panels and geometry edits | 2/2 checks pass |
+| Browser interaction, all six panels and geometry edits | 3/3 checks pass |
+| Header Play/Pause legibility | White label retained in hover state | Pass |
+| Sweep progress feedback | Rotating target glyph, percentage and completed/total count render during work | Pass |
 | Three-sensor 60-second run | Pass — non-zero live frames maintained; zero console errors |
 | Ten-second README demonstration capture | 50 frames, 867 × 600 px, 2.4 MB | Pass |
 

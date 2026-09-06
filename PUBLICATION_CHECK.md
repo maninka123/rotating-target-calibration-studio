@@ -13,7 +13,7 @@ These checks were repeated before the current release commit on 6 September 2026
 | 7 | Attribution and commit trailers | Case-insensitive prohibited-attribution scan; pre-commit log inspection | Pass — no prohibited reference or co-author trailer in tracked content or history |
 | 8 | Measurement data | Extension scan plus staged-content review | Pass — no bag, point-cloud, CSV, measurement, or copied results file is tracked; numbers are specification constants or simulation parameters |
 | 9 | External publication material | Staged document and source review | Pass — no external publication, section number, citation, manuscript text, or results table is referenced |
-| 10 | Independent history and author | `git log --all` and repository-local identity inspection | Pass — two local project commits, both authored solely by Pasindu Ranasinghe using the supplied UNSW email address |
+| 10 | Independent history and author | `git log --all` and repository-local identity inspection | Pass — all four existing project commits are authored solely by Pasindu Ranasinghe using the supplied UNSW email address; the staged release uses the same local identity |
 
 Additional checks:
 

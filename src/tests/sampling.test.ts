@@ -115,6 +115,9 @@ describe('scan geometry', () => {
     }
     expect(verticalCrossings).toBeGreaterThan(35)
     expect(occupied.size).toBeGreaterThan(500)
+    let minimumRadius = Number.POSITIVE_INFINITY
+    for (const radius of frame.radiusMm) minimumRadius = Math.min(minimumRadius, radius)
+    expect(minimumRadius).toBeLessThan(DUAL_APERTURE.hubRadiusMm)
   })
 
   it('solid-state acquisitions have identical fixed positions', () => {

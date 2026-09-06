@@ -52,6 +52,8 @@ npm run preview
 - Configuration JSON import/export and a persistent custom sensor builder.
 - Six one-click teaching and validation scenarios.
 
+Sweep mode repeats the selected sensor acquisitions across one full target revolution without animating every frame. It summarises angle accuracy, estimator rejections and relative timing offsets, making systematic behaviour easier to see than in a single paused frame.
+
 ## Preset scenarios
 
 - **Sparse ring failure:** demonstrates contour rejection on four scan rings.

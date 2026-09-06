@@ -43,12 +43,29 @@ export function ResultsPanel(props: Props) {
       </div>
       <div className="sweep-block">
         <div className="subhead"><span>Sweep mode</span><small>Runs in a Web Worker without rendering frames</small></div>
+        <p className="sweep-explanation">Repeats acquisitions across a full target revolution, then reports angle-error statistics, rejected frames, error plots and cross-sensor timing offsets.</p>
         <div className="sweep-controls"><label>Acquisitions <input type="number" min="10" max="2000" value={count} onChange={(event) => setCount(Number(event.target.value))} /></label><button disabled={props.busy || selected().length === 0} onClick={() => props.onSweep(count, selected())}>Run sweep</button></div>
-        {props.sweepProgress > 0 && props.sweepProgress < 1 && <div className="progress"><span style={{ width: `${props.sweepProgress * 100}%` }} /></div>}
+        {props.sweepProgress > 0 && props.sweepProgress < 1 && <SweepProgress fraction={props.sweepProgress} total={count} />}
         {props.sweepSummaries.length > 0 && <SweepResults summaries={props.sweepSummaries} records={props.sweepRecords} />}
       </div>
       <ExportBar config={props.config} records={props.sweepRecords} onImport={props.onImport} />
     </Panel>
+  )
+}
+
+function SweepProgress({ fraction, total }: { fraction: number, total: number }) {
+  const completed = Math.min(total, Math.floor(total * fraction))
+  const percentage = Math.round(fraction * 100)
+  return (
+    <div className="sweep-progress-status" role="status" aria-label={`Sweep ${percentage}% complete`}>
+      <svg className="sweep-wheel" viewBox="0 0 44 44" aria-hidden="true" style={{ transform: `rotate(${fraction * 360}deg)` }}>
+        <circle cx="22" cy="22" r="18" />
+        <circle className="sweep-wheel-hub" cx="22" cy="22" r="5" />
+        <path d="M22 4v13M40 22H27M22 40V27" />
+      </svg>
+      <div className="sweep-progress-copy"><strong>Running sweep</strong><span>{percentage}% · {completed} of {total} acquisitions</span></div>
+      <div className="progress"><span style={{ width: `${fraction * 100}%` }} /></div>
+    </div>
   )
 }
 

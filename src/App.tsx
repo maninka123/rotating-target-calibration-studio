@@ -118,7 +118,15 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="brand"><img src={`${import.meta.env.BASE_URL}app-icon.svg`} alt="" /><div><span className="eyebrow">Temporal calibration laboratory</span><h1>Rotating Target Calibration Studio</h1></div></div>
-        <div className="header-status"><span>Simulation only</span><span>1.00× real time</span><button className="header-play" onClick={() => set('playing', !config.playing)}>{config.playing ? 'Pause' : 'Play'}</button></div>
+        <button
+          className={`header-play ${config.playing ? 'is-playing' : 'is-paused'}`}
+          type="button"
+          aria-pressed={config.playing}
+          onClick={() => set('playing', !config.playing)}
+        >
+          <span aria-hidden="true">{config.playing ? 'Ⅱ' : '▶'}</span>
+          {config.playing ? 'Pause' : 'Play'}
+        </button>
       </header>
       <nav className="scenario-bar" aria-label="Preset scenarios">
         <span>Scenarios</span>

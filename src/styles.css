@@ -26,11 +26,13 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .app-header { min-height: 94px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #cbd5d7; }
 .app-header h1 { font-size: clamp(1.45rem, 2.1vw, 2.1rem); line-height: 1; margin: .25rem 0 0; font-weight: 620; letter-spacing: -.025em; }
 .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .11em; font-size: .68rem; font-weight: 700; }
-.header-status { display: flex; gap: .55rem; flex-wrap: wrap; justify-content: flex-end; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand img { width: 52px; height: 52px; }
-.header-status span { border: 1px solid #b8c7c9; color: #526064; padding: .3rem .55rem; border-radius: 20px; font-size: .72rem; background: #f7f9f9; }
-.header-play { min-width: 74px; background: var(--accent); color: #fff; border-color: var(--accent); }
+.header-play { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; min-width: 98px; min-height: 40px; background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+.header-play > span { width: 1em; line-height: 1; text-align: center; }
+.header-play:hover:not(:disabled) { background: #105963; border-color: #105963; color: #fff; }
+.header-play.is-paused { background: #fff; color: var(--accent); border-width: 2px; }
+.header-play.is-paused:hover:not(:disabled) { background: var(--accent-soft); color: #104f57; border-color: var(--accent); }
 .scenario-bar { display: flex; align-items: center; gap: .45rem; padding: 13px 0; overflow-x: auto; }
 .scenario-bar > span { color: var(--muted); font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-right: .25rem; }
 .scenario-bar button { white-space: nowrap; padding: .38rem .62rem; font-size: .76rem; }
@@ -152,10 +154,19 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .estimate-card > .text-button { margin-left: 10px; }
 .empty-state { grid-column: 1 / -1; min-height: 100px; border: 1px dashed #bbc6c8; display: grid; place-items: center; color: var(--muted); }
 .sweep-block { margin-top: 16px; }
+.sweep-explanation { max-width: 780px; margin: 0 0 10px; color: var(--muted); font-size: .76rem; line-height: 1.45; }
 .sweep-controls { display: flex; gap: 8px; align-items: end; }
 .sweep-controls label { color: var(--muted); font-size: .72rem; }
 .sweep-controls input { width: 100px; margin-left: 5px; }
-.progress { height: 7px; background: #dfe7e8; margin: 10px 0; overflow: hidden; }
+.sweep-progress-status { display: grid; grid-template-columns: 34px minmax(170px, auto) 1fr; align-items: center; gap: 9px; margin: 10px 0; padding: 8px 10px; border: 1px solid #d5e0e1; background: #f6f9f9; }
+.sweep-wheel { width: 32px; height: 32px; transition: transform .15s linear; }
+.sweep-wheel circle { fill: #dce8e9; stroke: var(--accent); stroke-width: 2.5; }
+.sweep-wheel .sweep-wheel-hub { fill: #c94b43; stroke: #8d3934; stroke-width: 1.5; }
+.sweep-wheel path { fill: none; stroke: var(--aperture); stroke-width: 4; stroke-linecap: round; }
+.sweep-progress-copy { display: grid; min-width: 190px; }
+.sweep-progress-copy strong { color: #324144; font-size: .76rem; }
+.sweep-progress-copy span { color: var(--muted); font-size: .68rem; font-variant-numeric: tabular-nums; }
+.progress { height: 7px; background: #dfe7e8; overflow: hidden; }
 .progress span { display: block; height: 100%; background: var(--accent); transition: width .15s; }
 .table-wrap { overflow-x: auto; margin-top: 10px; }
 table { width: 100%; border-collapse: collapse; font-size: .72rem; }
@@ -182,5 +193,7 @@ footer { color: #687579; font-size: .7rem; text-align: center; padding: 20px 0 0
   .target-preview { max-width: 260px; }
   .view-grid, .comparison-grid { grid-template-columns: 1fr; }
   .app-header { align-items: flex-start; padding: 18px 0; gap: 12px; }
-  .header-status { display: none; }
+  .header-play { min-width: 88px; }
+  .sweep-progress-status { grid-template-columns: 34px 1fr; }
+  .sweep-progress-status .progress { grid-column: 1 / -1; }
 }

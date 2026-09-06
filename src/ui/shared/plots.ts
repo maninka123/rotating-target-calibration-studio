@@ -27,11 +27,6 @@ export const drawSamples = (
   const scale = Math.min(width, height) * 0.42 / (target.outerDiameterMm / 2)
   const cx = width / 2
   const cy = height / 2
-  const stride = Math.max(1, Math.ceil(frame.classes.length / 20_000))
-  for (let index = 0; index < frame.classes.length; index += stride) {
-    context.fillStyle = CLASS_COLOURS[frame.classes[index] as keyof typeof CLASS_COLOURS]
-    context.fillRect(cx + frame.xMm[index] * scale - 1, cy - frame.yMm[index] * scale - 1, 2.2, 2.2)
-  }
   context.strokeStyle = '#89969a'
   context.lineWidth = 1
   context.beginPath()
@@ -41,7 +36,16 @@ export const drawSamples = (
   context.beginPath()
   context.arc(cx, cy, hubRadiusSensorPixels(target, scale), 0, Math.PI * 2)
   context.fill()
-  context.strokeStyle = '#7f302c'; context.stroke()
+  const stride = Math.max(1, Math.ceil(frame.classes.length / 20_000))
+  for (let index = 0; index < frame.classes.length; index += stride) {
+    context.fillStyle = CLASS_COLOURS[frame.classes[index] as keyof typeof CLASS_COLOURS]
+    context.fillRect(cx + frame.xMm[index] * scale - 1, cy - frame.yMm[index] * scale - 1, 2.2, 2.2)
+  }
+  context.strokeStyle = '#7f302c'
+  context.lineWidth = 1.5
+  context.beginPath()
+  context.arc(cx, cy, hubRadiusSensorPixels(target, scale), 0, Math.PI * 2)
+  context.stroke()
   const estimates = estimate ? (Array.isArray(estimate) ? estimate : [estimate]) : []
   const truth = estimates[0]
   const colours = { contour: '#c94b43', geometric: '#176b75' }
