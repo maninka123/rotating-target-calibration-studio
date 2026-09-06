@@ -22,13 +22,13 @@ export function TargetDesigner({ target, onChange }: Props) {
   }
   return (
     <Panel number={1} title="Target designer" className="target-panel">
-      <div className="preset-row" aria-label="Target presets">
-        <button className={matchesTargetPreset(target, SINGLE_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, SINGLE_APERTURE)} onClick={() => onChange(structuredClone(SINGLE_APERTURE))}>Single aperture</button>
-        <button className={matchesTargetPreset(target, DUAL_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, DUAL_APERTURE)} onClick={() => onChange(structuredClone(DUAL_APERTURE))}>Dual aperture</button>
-        <button className={matchesTargetPreset(target, TRIPLE_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, TRIPLE_APERTURE)} onClick={() => onChange(structuredClone(TRIPLE_APERTURE))}>Triple aperture</button>
-      </div>
       <div className="target-layout">
-        <div>
+        <div className="target-controls">
+          <div className="preset-row" aria-label="Target presets">
+            <button className={matchesTargetPreset(target, SINGLE_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, SINGLE_APERTURE)} onClick={() => onChange(structuredClone(SINGLE_APERTURE))}>Single aperture</button>
+            <button className={matchesTargetPreset(target, DUAL_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, DUAL_APERTURE)} onClick={() => onChange(structuredClone(DUAL_APERTURE))}>Dual aperture</button>
+            <button className={matchesTargetPreset(target, TRIPLE_APERTURE) ? 'active' : ''} aria-pressed={matchesTargetPreset(target, TRIPLE_APERTURE)} onClick={() => onChange(structuredClone(TRIPLE_APERTURE))}>Triple aperture</button>
+          </div>
           <div className="field-grid">
             <NumberField label="Outer diameter" value={target.outerDiameterMm} unit="mm" min={100} max={1000} onChange={(value) => update('outerDiameterMm', value)} />
             <NumberField label="Hub radius" value={target.hubRadiusMm} unit="mm" min={0} max={target.outerDiameterMm / 2 - 1} onChange={(value) => update('hubRadiusMm', value)} />
@@ -47,20 +47,20 @@ export function TargetDesigner({ target, onChange }: Props) {
               </div>
             ))}
           </div>
+          <div className="readout-grid">
+            <Readout label="Angular sensitivity Λ" value={`${(lambda / 1e6).toFixed(2)} × 10⁶ mm³`} />
+            <Readout label="Dispersion ratio vs single aperture" value={`${(predictedDispersionRatio(SINGLE_APERTURE, target) * 100).toFixed(1)}%`} />
+            <Readout label="Aperture area" value={`${apertureArea(target).toFixed(0)} mm²`} detail={`${removedAreaRelativeTo(target, DUAL_APERTURE) >= 0 ? '+' : ''}${removedAreaRelativeTo(target, DUAL_APERTURE).toFixed(0)} mm² vs dual aperture`} />
+            <Readout label="COM eccentricity" value={`${eccentricity.toFixed(1)} mm`} warning={eccentricity > 28.5} />
+            <Readout label="Minimum thickness" value={`${minimumThickness.toFixed(2)} mm`} warning={target.thicknessMm < minimumThickness} />
+            <Readout label="Maximum bending stress" value={`${stress.toFixed(2)} MPa`} />
+          </div>
+          {(eccentricity > 28.5 || target.thicknessMm < minimumThickness) && (
+            <div className="warning">Design warning: {eccentricity > 28.5 ? 'centre-of-mass eccentricity exceeds 28.5 mm. ' : ''}{target.thicknessMm < minimumThickness ? 'Plate is below the self-weight deflection thickness.' : ''}</div>
+          )}
         </div>
         <TargetPreview target={target} />
       </div>
-      <div className="readout-grid">
-        <Readout label="Angular sensitivity Λ" value={`${(lambda / 1e6).toFixed(2)} × 10⁶ mm³`} />
-        <Readout label="Dispersion ratio vs single aperture" value={`${(predictedDispersionRatio(SINGLE_APERTURE, target) * 100).toFixed(1)}%`} />
-        <Readout label="Aperture area" value={`${apertureArea(target).toFixed(0)} mm²`} detail={`${removedAreaRelativeTo(target, DUAL_APERTURE) >= 0 ? '+' : ''}${removedAreaRelativeTo(target, DUAL_APERTURE).toFixed(0)} mm² vs dual aperture`} />
-        <Readout label="COM eccentricity" value={`${eccentricity.toFixed(1)} mm`} warning={eccentricity > 28.5} />
-        <Readout label="Minimum thickness" value={`${minimumThickness.toFixed(2)} mm`} warning={target.thicknessMm < minimumThickness} />
-        <Readout label="Maximum bending stress" value={`${stress.toFixed(2)} MPa`} />
-      </div>
-      {(eccentricity > 28.5 || target.thicknessMm < minimumThickness) && (
-        <div className="warning">Design warning: {eccentricity > 28.5 ? 'centre-of-mass eccentricity exceeds 28.5 mm. ' : ''}{target.thicknessMm < minimumThickness ? 'Plate is below the self-weight deflection thickness.' : ''}</div>
-      )}
     </Panel>
   )
 }

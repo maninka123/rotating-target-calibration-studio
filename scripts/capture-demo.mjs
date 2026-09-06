@@ -29,6 +29,7 @@ try {
   browser = await chromium.launch({ headless: true })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
   await page.goto(`http://127.0.0.1:${port}/`)
+  await page.getByRole('button', { name: 'Continue' }).click()
   const panel = page.locator('.scene-panel')
   await panel.scrollIntoViewIfNeeded()
   await page.waitForTimeout(800)

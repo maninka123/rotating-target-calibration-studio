@@ -91,6 +91,8 @@ These values are not assertions and are not used as sampler inputs.
 | Browser interaction, all six panels and geometry edits | 3/3 checks pass |
 | Header Play/Pause legibility | White label retained in hover state | Pass |
 | Sweep progress feedback | Rotating target glyph, percentage and completed/total count render during work | Pass |
+| First-load notice | Persistence, focus trap, Escape dismissal, reopen and focus restoration | Pass |
+| Target designer layout | Preview begins level with presets; statistics directly follow aperture rows | Pass |
 | Three-sensor 60-second run | Pass — non-zero live frames maintained; zero console errors |
 | Ten-second README demonstration capture | 50 frames, 867 × 600 px, 2.4 MB | Pass |
 

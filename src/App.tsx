@@ -11,7 +11,10 @@ import { SensorConfiguration } from './ui/sensors/SensorConfiguration'
 import { TargetDesigner } from './ui/target/TargetDesigner'
 import { LiveSensorViews } from './ui/views/LiveSensorViews'
 import { RotationPanel } from './ui/rotation/RotationPanel'
+import { FirstLoadNotice } from './ui/shared/FirstLoadNotice'
 import { SimulationWorkerClient } from './workers/client'
+
+const NOTICE_STORAGE_KEY = 'rotating-target-studio-notice-dismissed'
 
 const place = (id: string): PlacedSensor => ({ ...byId(id), instanceId: crypto.randomUUID() })
 
@@ -33,7 +36,11 @@ export default function App() {
   const [sweepProgress, setSweepProgress] = useState(0)
   const [sweepRecords, setSweepRecords] = useState<SweepRecord[]>([])
   const [sweepSummaries, setSweepSummaries] = useState<SweepSummary[]>([])
+  const [noticeOpen, setNoticeOpen] = useState(() => {
+    try { return localStorage.getItem(NOTICE_STORAGE_KEY) !== 'true' } catch { return true }
+  })
   const worker = useMemo(() => new SimulationWorkerClient(), [])
+  const aboutTrigger = useRef<HTMLAnchorElement>(null)
   const acquisition = useRef(0)
   const startTime = useRef(performance.now())
 
@@ -114,19 +121,29 @@ export default function App() {
     setConfig(parseConfiguration(JSON.stringify(incoming)))
   }
 
+  const closeNotice = useCallback(() => {
+    try { localStorage.setItem(NOTICE_STORAGE_KEY, 'true') } catch { /* storage may be unavailable */ }
+    setNoticeOpen(false)
+    requestAnimationFrame(() => aboutTrigger.current?.focus())
+  }, [])
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="brand"><img src={`${import.meta.env.BASE_URL}app-icon.svg`} alt="" /><div><span className="eyebrow">Temporal calibration laboratory</span><h1>Rotating Target Calibration Studio</h1></div></div>
-        <button
-          className={`header-play ${config.playing ? 'is-playing' : 'is-paused'}`}
-          type="button"
-          aria-pressed={config.playing}
-          onClick={() => set('playing', !config.playing)}
-        >
-          <span aria-hidden="true">{config.playing ? 'Ⅱ' : '▶'}</span>
-          {config.playing ? 'Pause' : 'Play'}
-        </button>
+        <div className="header-actions">
+          <span className="work-marker">Work in progress</span>
+          <a ref={aboutTrigger} className="header-about" href="#about-this-tool" onClick={(event) => { event.preventDefault(); setNoticeOpen(true) }}>About this tool</a>
+          <button
+            className={`header-play ${config.playing ? 'is-playing' : 'is-paused'}`}
+            type="button"
+            aria-pressed={config.playing}
+            onClick={() => set('playing', !config.playing)}
+          >
+            <span aria-hidden="true">{config.playing ? 'Ⅱ' : '▶'}</span>
+            {config.playing ? 'Pause' : 'Play'}
+          </button>
+        </div>
       </header>
       <nav className="scenario-bar" aria-label="Preset scenarios">
         <span>Scenarios</span>
@@ -146,6 +163,7 @@ export default function App() {
         <ResultsPanel playing={config.playing} sensors={config.sensors} config={config} estimates={estimates} onEstimate={runEstimate} busy={busy} sweepProgress={sweepProgress} sweepRecords={sweepRecords} sweepSummaries={sweepSummaries} onSweep={runSweepMode} onImport={importConfig} onSearchResolution={(value) => set('searchResolutionDeg', value)} />
       </main>
       <footer>All calculations run locally. No telemetry, backend, ROS runtime, or external service is used.</footer>
+      <FirstLoadNotice open={noticeOpen} onClose={closeNotice} />
     </div>
   )
 }
