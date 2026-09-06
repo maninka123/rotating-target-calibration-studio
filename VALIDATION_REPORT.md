@@ -106,6 +106,8 @@ The first hosted CI run passed all unit/build checks and six of seven browser te
 
 The next hosted run exposed a race in the frozen-frame test's instrumentation: it used the latest worker reply even when that reply was discarded after pausing. The canvas now records the identity of the acquisition actually drawn, and the test compares its complete arrays with the estimator input. Empty/invalidated frames also clear their canvases while loading. The equality assertion is retained.
 
+The first hosted run with checkpoint PNGs completed the sweep and passed six of seven browser tests, but the final saved-status assertion used an implicit five-second wait while 20 high-resolution images were still encoding. The assertion now allows 30 seconds for asynchronous file completion. File count, MIME type, minimum image size and all simulation expectations remain unchanged.
+
 ## Limits of this verification
 
 - The 100-rebuild unit test verifies disposal calls. It does not measure GPU-memory growth; no memory benchmark is claimed.

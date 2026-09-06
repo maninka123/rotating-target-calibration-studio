@@ -93,7 +93,7 @@ test('all panels render, rotation runs, and both estimators return output', asyn
   await page.waitForTimeout(700)
   expect(await sweepAngle.inputValue()).not.toBe(angleBeforeSweep)
   await expect(page.locator('.table-wrap')).toBeVisible({ timeout: 45_000 })
-  await expect(page.locator('.sweep-save-status')).toContainText('Saved to Selected parent/rotating-target-sweep_')
+  await expect(page.locator('.sweep-save-status')).toContainText('Saved to Selected parent/rotating-target-sweep_', { timeout: 30_000 })
   const savedFiles = await page.evaluate(() => (window as unknown as { __savedSweepFiles: string[] }).__savedSweepFiles)
   expect(savedFiles.some((name) => name.startsWith('folder:rotating-target-sweep_'))).toBe(true)
   expect(savedFiles).toEqual(expect.arrayContaining(['sweep-results.csv', 'sweep-summary.json', 'configuration.json']))
