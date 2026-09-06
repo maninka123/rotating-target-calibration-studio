@@ -84,13 +84,16 @@ These values are not assertions and are not used as sampler inputs.
 | --- | :---: |
 | TypeScript strict typecheck | Pass |
 | ESLint with zero warnings | Pass |
-| Unit suite: 109 tests | Pass |
+| Unit suite: 112 tests | Pass |
 | Production build | Pass |
 | Main application chunk reduced from about 1,023 kB to about 190 kB | Pass |
 | Three-dimensional renderer emitted as a lazy chunk | Pass |
 | Browser interaction, all six panels and geometry edits | 3/3 checks pass |
 | Header Play/Pause legibility | White label retained in hover state | Pass |
 | Sweep progress feedback | Rotating target glyph, percentage and completed/total count render during work | Pass |
+| Sweep review | Geometry, RPM, estimators, vertical sensor specifications, estimated time and destination shown before confirmation | Pass |
+| Sweep output package | Timestamped folder plus CSV, summary JSON and configuration JSON | Pass |
+| Sweep/live isolation | Dedicated sweep worker leaves the simulation clock and live worker independent | Pass |
 | First-load notice | Persistence, focus trap, Escape dismissal, reopen and focus restoration | Pass |
 | Target designer layout | Preview begins level with presets; statistics directly follow aperture rows | Pass |
 | Three-sensor 60-second run | Pass — non-zero live frames maintained; zero console errors |

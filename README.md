@@ -42,11 +42,11 @@ npm run preview
 - A Three.js scene with rim-connected through-holes, adjustable translucent sensor fields of view, distance annotations, orbit controls and optional rays.
 - Typed-array sample frames generated and estimated in a Web Worker.
 - Frozen-frame contour and geometric estimation grouped once per sensor, with thick actual/recovered templates, angle-error tables and cost curves.
-- Batch sweeps, error statistics, signed-error plots, cross-sensor time-offset recovery and CSV export.
+- Reviewed batch sweeps, independent background execution, error statistics, signed-error plots, cross-sensor time-offset recovery and organised result-folder export.
 - Configuration JSON import/export and a persistent custom sensor builder.
 - Six one-click teaching and validation scenarios.
 
-Sweep mode repeats the selected sensor acquisitions across one full target revolution without animating every frame. It summarises angle accuracy, estimator rejections and relative timing offsets, making systematic behaviour easier to see than in a single paused frame.
+Sweep mode repeats the selected sensor acquisitions across one full target revolution without animating every frame. Before starting, a review shows the geometry, RPM, estimators, sensor specifications, approximate device time and output destination. Supported browsers create a timestamped folder containing CSV results, a JSON summary and the exact configuration; other browsers download one self-contained JSON package. A separate worker keeps the live simulation responsive during the run.
 
 ![Face-on rotation view](docs/rotation-view.png)
 

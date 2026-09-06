@@ -32,7 +32,7 @@ const cameraCrop = (sensor: SensorDefinition, target: TargetConfig): CameraCrop 
   return { minColumn, columns: maxColumn - minColumn + 1, minRow, rows: maxRow - minRow + 1 }
 }
 
-const rayCount = (sensor: SensorDefinition, target: TargetConfig): number => {
+export const generatedRayCount = (sensor: SensorDefinition, target: TargetConfig): number => {
   if (sensor.architecture === 'rotating-head') return Math.ceil(360 / (sensor.horizontalResolutionDeg ?? 0.2)) * Math.max(1, Math.round(sensor.channelCount ?? 1))
   if (sensor.architecture === 'single-plane') return Math.ceil(sensor.horizontalFovDeg / (sensor.horizontalResolutionDeg ?? 0.1)) + 1
   if (sensor.architecture === 'electronic-array') return Math.max(1, Math.round(sensor.gridColumns ?? 1)) * Math.max(1, Math.round(sensor.gridRows ?? 1))
@@ -44,7 +44,7 @@ export const samplesAcrossTarget = (sensor: SensorDefinition, target: TargetConf
   const angularDiameterDeg = 2 * Math.atan((target.outerDiameterMm / 2000) / sensor.standOffM) / DEG
   if (sensor.architecture === 'camera') return target.outerDiameterMm / 1000 / sensor.standOffM * ((sensor.focalLengthMm ?? 1) / 1000) / ((sensor.pixelPitchUm ?? 1) * 1e-6)
   if (sensor.architecture === 'electronic-array') return angularDiameterDeg / (sensor.horizontalFovDeg / Math.max(1, (sensor.gridColumns ?? 2) - 1))
-  return angularDiameterDeg / (sensor.horizontalResolutionDeg ?? sensor.horizontalFovDeg / Math.sqrt(rayCount(sensor, target)))
+  return angularDiameterDeg / (sensor.horizontalResolutionDeg ?? sensor.horizontalFovDeg / Math.sqrt(generatedRayCount(sensor, target)))
 }
 
 export const rotatingHeadBandRingCount = (sensor: SensorDefinition, target: TargetConfig): number => {
@@ -60,7 +60,7 @@ export const generateFrame = (
   acquisitionStartS: number,
   acquisitionIndex = 0,
 ): SampleFrame => {
-  const total = rayCount(sensor, target)
+  const total = generatedRayCount(sensor, target)
   const xMm = new Float64Array(total)
   const yMm = new Float64Array(total)
   const radiusMm = new Float64Array(total)

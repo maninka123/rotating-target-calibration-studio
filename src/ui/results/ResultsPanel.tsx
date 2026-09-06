@@ -4,6 +4,8 @@ import type { SweepSummary } from '../../core/sweep'
 import { Panel } from '../shared/Panel'
 import { drawCost, drawSamples } from '../shared/plots'
 import { parseConfiguration, serialiseConfiguration } from '../../core/config'
+import { SweepReviewDialog } from './SweepReviewDialog'
+import { downloadSweepPackage, saveSweepFolder, sweepFolderName, sweepRecordsCsv } from './sweepFiles'
 
 interface Props {
   playing: boolean
@@ -15,7 +17,7 @@ interface Props {
   sweepProgress: number
   sweepRecords: SweepRecord[]
   sweepSummaries: SweepSummary[]
-  onSweep: (count: number, estimators: ('contour' | 'geometric')[]) => void
+  onSweep: (count: number, estimators: ('contour' | 'geometric')[]) => Promise<{ records: SweepRecord[], summaries: SweepSummary[] }>
   onImport: (config: SimulationConfig) => void
   onSearchResolution: (value: number) => void
 }
@@ -24,7 +26,28 @@ export function ResultsPanel(props: Props) {
   const [contour, setContour] = useState(true)
   const [geometric, setGeometric] = useState(true)
   const [count, setCount] = useState(300)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [pendingFolder, setPendingFolder] = useState('')
+  const [saveStatus, setSaveStatus] = useState('')
+  const sweepTrigger = useRef<HTMLButtonElement>(null)
   const selected = (): ('contour' | 'geometric')[] => [...(contour ? ['contour' as const] : []), ...(geometric ? ['geometric' as const] : [])]
+  const closeReview = () => { setReviewOpen(false); requestAnimationFrame(() => sweepTrigger.current?.focus()) }
+  const openReview = () => { setPendingFolder(sweepFolderName(props.config)); setSaveStatus(''); setReviewOpen(true) }
+  const confirmSweep = async (directory: FileSystemDirectoryHandle | null) => {
+    setReviewOpen(false)
+    try {
+      const result = await props.onSweep(count, selected())
+      if (directory) {
+        await saveSweepFolder(directory, pendingFolder, props.config, result.records, result.summaries)
+        setSaveStatus(`Saved to ${directory.name}/${pendingFolder}`)
+      } else {
+        downloadSweepPackage(pendingFolder, props.config, result.records, result.summaries)
+        setSaveStatus(`Downloaded ${pendingFolder}.json`)
+      }
+    } catch (error) {
+      setSaveStatus(`Sweep output was not saved: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
   return (
     <Panel number={6} title="Estimation and results" className="results-panel">
       {props.playing && <div className="paused-notice">Pause rotation to freeze a frame and enable estimation.</div>}
@@ -44,11 +67,13 @@ export function ResultsPanel(props: Props) {
       <div className="sweep-block">
         <div className="subhead"><span>Sweep mode</span><small>Runs in a Web Worker without rendering frames</small></div>
         <p className="sweep-explanation">Repeats acquisitions across a full target revolution, then reports angle-error statistics, rejected frames, error plots and cross-sensor timing offsets.</p>
-        <div className="sweep-controls"><label>Acquisitions <input type="number" min="10" max="2000" value={count} onChange={(event) => setCount(Number(event.target.value))} /></label><button disabled={props.busy || selected().length === 0} onClick={() => props.onSweep(count, selected())}>Run sweep</button></div>
+        <div className="sweep-controls"><label>Acquisitions <input type="number" min="10" max="2000" value={count} onChange={(event) => setCount(Number(event.target.value))} /></label><button ref={sweepTrigger} disabled={props.busy || selected().length === 0} onClick={openReview}>Run sweep</button></div>
         {props.sweepProgress > 0 && props.sweepProgress < 1 && <SweepProgress fraction={props.sweepProgress} total={count} />}
+        {saveStatus && <p className="sweep-save-status" role="status">{saveStatus}</p>}
         {props.sweepSummaries.length > 0 && <SweepResults summaries={props.sweepSummaries} records={props.sweepRecords} />}
       </div>
       <ExportBar config={props.config} records={props.sweepRecords} onImport={props.onImport} />
+      {reviewOpen && <SweepReviewDialog config={props.config} acquisitions={count} estimators={selected()} folderName={pendingFolder} onCancel={closeReview} onConfirm={confirmSweep} />}
     </Panel>
   )
 }
@@ -126,9 +151,7 @@ function download(name: string, content: string, type: string) {
 function ExportBar({ config, records, onImport }: { config: SimulationConfig, records: SweepRecord[], onImport: (config: SimulationConfig) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const exportCsv = () => {
-    const keys: (keyof SweepRecord)[] = ['acquisition', 'sensor', 'estimator', 'accepted', 'trueAngleDeg', 'reportedTimeS', 'meanObservationTimeS', 'errorDeg', 'timingErrorS', 'reason']
-    const lines = [keys.join(','), ...records.map((row) => keys.map((key) => JSON.stringify(row[key])).join(','))]
-    download('rotating-target-sweep.csv', lines.join('\n'), 'text/csv')
+    download('rotating-target-sweep.csv', sweepRecordsCsv(records), 'text/csv')
   }
   return (
     <div className="export-bar">

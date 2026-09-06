@@ -40,11 +40,12 @@ export default function App() {
     try { return localStorage.getItem(NOTICE_STORAGE_KEY) !== 'true' } catch { return true }
   })
   const worker = useMemo(() => new SimulationWorkerClient(), [])
+  const sweepWorker = useMemo(() => new SimulationWorkerClient(), [])
   const aboutTrigger = useRef<HTMLAnchorElement>(null)
   const acquisition = useRef(0)
   const startTime = useRef(performance.now())
 
-  useEffect(() => () => worker.terminate(), [worker])
+  useEffect(() => () => { worker.terminate(); sweepWorker.terminate() }, [worker, sweepWorker])
 
   useEffect(() => {
     if (!config.playing) return
@@ -101,12 +102,15 @@ export default function App() {
     setBusy(true)
     setSweepProgress(0.001)
     try {
-      const reply = await worker.request({ type: 'sweep', sensors: config.sensors, target: config.target, rpm: config.rpm, acquisitions: count, estimators, searchResolutionDeg: config.searchResolutionDeg }, setSweepProgress)
-      setSweepRecords(reply.records as SweepRecord[])
-      setSweepSummaries(reply.summaries as SweepSummary[])
+      const reply = await sweepWorker.request({ type: 'sweep', sensors: config.sensors, target: config.target, rpm: config.rpm, acquisitions: count, estimators, searchResolutionDeg: config.searchResolutionDeg }, setSweepProgress)
+      const records = reply.records as SweepRecord[]
+      const summaries = reply.summaries as SweepSummary[]
+      setSweepRecords(records)
+      setSweepSummaries(summaries)
       setSweepProgress(1)
+      return { records, summaries }
     } finally { setBusy(false) }
-  }, [config, worker])
+  }, [config, sweepWorker])
 
   const applyScenario = (name: ScenarioName) => {
     setConfig(scenarioConfiguration(name))

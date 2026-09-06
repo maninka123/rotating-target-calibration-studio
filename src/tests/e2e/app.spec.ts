@@ -2,6 +2,23 @@ import { expect, test } from '@playwright/test'
 
 test('all panels render, rotation runs, and both estimators return output', async ({ page }) => {
   test.setTimeout(90_000)
+  await page.addInitScript(() => {
+    const savedFiles: string[] = []
+    Object.assign(window, {
+      __savedSweepFiles: savedFiles,
+      showDirectoryPicker: async () => ({
+        kind: 'directory', name: 'Selected parent',
+        getDirectoryHandle: async (folderName: string) => {
+          savedFiles.push(`folder:${folderName}`)
+          return {
+            getFileHandle: async (fileName: string) => ({
+              createWritable: async () => ({ write: async () => { savedFiles.push(fileName) }, close: async () => undefined }),
+            }),
+          }
+        },
+      }),
+    })
+  })
   const errors: string[] = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   await page.goto('/rotating-target-calibration-studio/')
@@ -43,11 +60,34 @@ test('all panels render, rotation runs, and both estimators return output', asyn
   await page.getByTestId('estimator-results').screenshot({ path: 'docs/estimation-overlay.png' })
   await page.getByRole('button', { name: 'Aperture ablation' }).click()
   await page.getByLabel('Geometric boundary fit').uncheck()
-  await page.getByLabel('Acquisitions').fill('30')
+  await page.getByLabel('Acquisitions').fill('300')
   await expect(page.locator('.sweep-explanation')).toContainText('full target revolution')
   await page.getByRole('button', { name: 'Run sweep' }).click()
-  await expect(page.locator('.sweep-progress-status')).toContainText(/\d+ of 30 acquisitions/)
+  const review = page.getByRole('dialog', { name: 'Run acquisition sweep?' })
+  await expect(review).toContainText('Single aperture')
+  await expect(review).toContainText('5.0 rpm')
+  await expect(review).toContainText('Velodyne Puck Hi-Res')
+  await expect(review).toContainText('Contour matching')
+  await expect(review).toContainText('Estimated completion')
+  await page.keyboard.press('Escape')
+  await expect(review).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Run sweep' })).toBeFocused()
+  await page.locator('.header-play').click()
+  await page.getByRole('button', { name: 'Run sweep' }).click()
+  await expect(review.getByRole('button', { name: 'Start and save sweep' })).toBeDisabled()
+  await review.getByRole('button', { name: 'Choose parent folder' }).click()
+  await expect(review).toContainText('Selected parent/rotating-target-sweep_')
+  const sweepAngle = page.getByLabel('Revolution angle')
+  const angleBeforeSweep = await sweepAngle.inputValue()
+  await review.getByRole('button', { name: 'Start and save sweep' }).click()
+  await expect(page.locator('.sweep-progress-status')).toContainText(/\d+ of 300 acquisitions/)
+  await page.waitForTimeout(700)
+  expect(await sweepAngle.inputValue()).not.toBe(angleBeforeSweep)
   await expect(page.locator('.table-wrap')).toBeVisible({ timeout: 45_000 })
+  await expect(page.locator('.sweep-save-status')).toContainText('Saved to Selected parent/rotating-target-sweep_')
+  const savedFiles = await page.evaluate(() => (window as unknown as { __savedSweepFiles: string[] }).__savedSweepFiles)
+  expect(savedFiles.some((name) => name.startsWith('folder:rotating-target-sweep_'))).toBe(true)
+  expect(savedFiles).toEqual(expect.arrayContaining(['sweep-results.csv', 'sweep-summary.json', 'configuration.json']))
   await page.locator('.sweep-block').screenshot({ path: 'docs/sweep-results.png' })
   expect(errors).toEqual([])
 })
