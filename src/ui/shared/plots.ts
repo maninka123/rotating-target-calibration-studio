@@ -13,12 +13,13 @@ export const drawSamples = (
   frame: SampleFrame,
   target: TargetConfig,
   estimate?: EstimateResult | EstimateResult[],
+  displaySize?: { width: number, height: number },
 ): void => {
   const context = canvas.getContext('2d')
   if (!context) return
   const ratio = window.devicePixelRatio || 1
-  const width = canvas.clientWidth || 420
-  const height = canvas.clientHeight || 260
+  const width = displaySize?.width ?? (canvas.clientWidth || 420)
+  const height = displaySize?.height ?? (canvas.clientHeight || 260)
   canvas.width = width * ratio
   canvas.height = height * ratio
   context.scale(ratio, ratio)

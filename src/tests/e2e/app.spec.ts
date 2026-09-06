@@ -4,8 +4,10 @@ test('all panels render, rotation runs, and both estimators return output', asyn
   test.setTimeout(90_000)
   await page.addInitScript(() => {
     const savedFiles: string[] = []
+    const savedWrites: { name: string, type: string, size: number }[] = []
     Object.assign(window, {
       __savedSweepFiles: savedFiles,
+      __savedSweepWrites: savedWrites,
       showDirectoryPicker: async () => ({
         kind: 'directory', name: 'Selected parent',
         getDirectoryHandle: async (folderName: string) => {
@@ -13,7 +15,10 @@ test('all panels render, rotation runs, and both estimators return output', asyn
           const folder = {
             getDirectoryHandle: async () => folder,
             getFileHandle: async (fileName: string) => ({
-              createWritable: async () => ({ write: async () => { savedFiles.push(fileName) }, close: async () => undefined }),
+              createWritable: async () => ({ write: async (value: string | Blob) => {
+                savedFiles.push(fileName)
+                savedWrites.push({ name: fileName, type: value instanceof Blob ? value.type : 'text/plain', size: value instanceof Blob ? value.size : value.length })
+              }, close: async () => undefined }),
             }),
           }
           return folder
@@ -92,6 +97,10 @@ test('all panels render, rotation runs, and both estimators return output', asyn
   const savedFiles = await page.evaluate(() => (window as unknown as { __savedSweepFiles: string[] }).__savedSweepFiles)
   expect(savedFiles.some((name) => name.startsWith('folder:rotating-target-sweep_'))).toBe(true)
   expect(savedFiles).toEqual(expect.arrayContaining(['sweep-results.csv', 'sweep-summary.json', 'configuration.json']))
+  expect(savedFiles.some((name) => name.endsWith('-detections-and-templates.png'))).toBe(true)
+  const savedWrites = await page.evaluate(() => (window as unknown as { __savedSweepWrites: { name: string, type: string, size: number }[] }).__savedSweepWrites)
+  expect(savedWrites.some((item) => item.name.endsWith('-detections-and-templates.png') && item.type === 'image/png' && item.size > 10_000)).toBe(true)
+  await expect(page.locator('.table-wrap').first()).toContainText('S1 · Velodyne Puck Hi-Res')
   await page.locator('.sweep-block').screenshot({ path: 'docs/sweep-results.png' })
   expect(errors).toEqual([])
 })

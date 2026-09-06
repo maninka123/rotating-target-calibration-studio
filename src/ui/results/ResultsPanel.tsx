@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EstimateResult, PlacedSensor, SampleFrame, SimulationConfig, SweepRecord } from '../../core/types'
-import type { PairwiseOffset, SweepSummary } from '../../core/sweep'
+import type { PairwiseOffset, SweepSummary, SweepVisualSnapshot } from '../../core/sweep'
 import { Panel } from '../shared/Panel'
 import { NumberField } from '../shared/NumberField'
 import { drawCost, drawSamples } from '../shared/plots'
@@ -20,7 +20,7 @@ interface Props {
   sweepRecords: SweepRecord[]
   sweepSummaries: SweepSummary[]
   pairwiseOffsets: PairwiseOffset[]
-  onSweep: (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number, configuration: SimulationConfig, onIntermediate?: (records: SweepRecord[]) => void }) => Promise<{ records: SweepRecord[], summaries: SweepSummary[], pairwiseOffsets: PairwiseOffset[] }>
+  onSweep: (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number, configuration: SimulationConfig, onIntermediate?: (records: SweepRecord[], visuals: SweepVisualSnapshot[]) => void }) => Promise<{ records: SweepRecord[], summaries: SweepSummary[], pairwiseOffsets: PairwiseOffset[] }>
   onCancelSweep: () => void
   onImport: (config: SimulationConfig) => void
   onSearchResolution: (value: number) => void
@@ -53,10 +53,10 @@ export function ResultsPanel(props: Props) {
     try {
       if (directory) await saveSweepFolder(directory, folderName, runConfig, [], [], details)
       setResultSensors(structuredClone(runConfig.sensors))
-      const result = await props.onSweep(total, selected(), { ...options, configuration: runConfig, onIntermediate: options.intermediate ? (records) => {
+      const result = await props.onSweep(total, selected(), { ...options, configuration: runConfig, onIntermediate: options.intermediate ? (records, visuals) => {
         checkpoints.push(records)
         const index = checkpoints.length
-        if (directory) pendingWrites = pendingWrites.then(() => saveSweepCheckpoint(directory, folderName, index, records)).catch((error: Error) => { checkpointError = error.message })
+        if (directory) pendingWrites = pendingWrites.then(() => saveSweepCheckpoint(directory, folderName, index, records, visuals, runConfig)).catch((error: Error) => { checkpointError = error.message })
       } : undefined })
       details.pairwiseOffsets = result.pairwiseOffsets
       await pendingWrites
@@ -152,21 +152,22 @@ function CostPlot({ result }: { result: EstimateResult }) {
 
 const PLOT_COLOURS = ['#176b75', '#b84f45', '#967329', '#6457a6', '#2e8062', '#a35b8d']
 const estimatorName = (value: string) => value === 'geometric' ? 'Geometric boundary fit' : 'Contour matching'
-const sensorName = (sensors: PlacedSensor[], id: string) => {
+const sensorName = (sensors: PlacedSensor[], id: string, fallback?: string) => {
   const index = sensors.findIndex((sensor) => sensor.instanceId === id)
-  return index < 0 ? id : `S${index + 1} · ${sensors[index].name}`
+  return index < 0 ? (fallback ?? id) : `S${index + 1} · ${fallback ?? sensors[index].name}`
 }
 const plotSeries = (records: SweepRecord[], sensors: PlacedSensor[]) => [...new Set(records.map((row) => JSON.stringify([row.sensor, row.estimator])))].map((key, index) => {
   const [sensor, estimator] = JSON.parse(key) as [string, string]
-  return { key, label: `${sensorName(sensors, sensor)} · ${estimatorName(estimator)}`, colour: PLOT_COLOURS[index % PLOT_COLOURS.length], records: records.filter((row) => row.sensor === sensor && row.estimator === estimator && row.accepted && row.errorDeg !== null) }
+  const matching = records.filter((row) => row.sensor === sensor && row.estimator === estimator)
+  return { key, label: `${sensorName(sensors, sensor, matching[0]?.sensorName)} · ${estimatorName(estimator)}`, colour: PLOT_COLOURS[index % PLOT_COLOURS.length], records: matching.filter((row) => row.accepted && row.errorDeg !== null) }
 })
 function PlotLegend({ records, sensors }: { records: SweepRecord[], sensors: PlacedSensor[] }) {
   return <div className="plot-legend">{plotSeries(records, sensors).map((series) => <span key={series.key}><i style={{ background: series.colour }} />{series.label}</span>)}</div>
 }
 function SweepResults({ summaries, offsets, records, sensors }: { summaries: SweepSummary[], offsets: PairwiseOffset[], records: SweepRecord[], sensors: PlacedSensor[] }) {
   return <>
-    <div className="table-wrap"><table><thead><tr><th>Sensor</th><th>Estimator</th><th>MAE</th><th>Median</th><th>SD</th><th>P95</th><th>Rejected</th></tr></thead><tbody>{summaries.map((row) => <tr key={`${row.sensor}-${row.estimator}`}><td>{sensorName(sensors, row.sensor)}</td><td>{estimatorName(row.estimator)}</td><td>{row.maeDeg?.toFixed(3) ?? '—'}°</td><td>{row.medianAbsDeg?.toFixed(3) ?? '—'}°</td><td>{row.sdDeg?.toFixed(3) ?? '—'}°</td><td>{row.p95Deg?.toFixed(3) ?? '—'}°</td><td>{(row.rejectionRate * 100).toFixed(1)}%</td></tr>)}</tbody></table></div>
-    {offsets.length > 0 && <><p className="method-note">Pair offset = first sensor observation/report lag minus second sensor lag. Expected values use the same paired accepted acquisitions; timing recovery is undefined at 0 RPM.</p><div className="table-wrap"><table><thead><tr><th>Sensor pair</th><th>Estimator</th><th>Recovered offset</th><th>Expected offset</th><th>Offset SD</th></tr></thead><tbody>{offsets.map((row) => <tr key={`${row.fromSensor}-${row.toSensor}-${row.estimator}`}><td>{sensorName(sensors, row.fromSensor)} → {sensorName(sensors, row.toSensor)}</td><td>{estimatorName(row.estimator)}</td><td>{row.recoveredOffsetMs?.toFixed(1) ?? '—'} ms</td><td>{row.expectedOffsetMs?.toFixed(1) ?? '—'} ms</td><td>{row.recoveredOffsetSdMs?.toFixed(1) ?? '—'} ms</td></tr>)}</tbody></table></div></>}
+    <div className="table-wrap"><table><thead><tr><th>Sensor</th><th>Estimator</th><th>MAE</th><th>Median</th><th>SD</th><th>P95</th><th>Rejected</th></tr></thead><tbody>{summaries.map((row) => <tr key={`${row.sensor}-${row.estimator}`}><td>{sensorName(sensors, row.sensor, row.sensorName)}</td><td>{estimatorName(row.estimator)}</td><td>{row.maeDeg?.toFixed(3) ?? '—'}°</td><td>{row.medianAbsDeg?.toFixed(3) ?? '—'}°</td><td>{row.sdDeg?.toFixed(3) ?? '—'}°</td><td>{row.p95Deg?.toFixed(3) ?? '—'}°</td><td>{(row.rejectionRate * 100).toFixed(1)}%</td></tr>)}</tbody></table></div>
+    {offsets.length > 0 && <><p className="method-note">Pair offset = first sensor observation/report lag minus second sensor lag. Expected values use the same paired accepted acquisitions; timing recovery is undefined at 0 RPM.</p><div className="table-wrap"><table><thead><tr><th>Sensor pair</th><th>Estimator</th><th>Recovered offset</th><th>Expected offset</th><th>Offset SD</th></tr></thead><tbody>{offsets.map((row) => <tr key={`${row.fromSensor}-${row.toSensor}-${row.estimator}`}><td>{sensorName(sensors, row.fromSensor, row.fromSensorName)} → {sensorName(sensors, row.toSensor, row.toSensorName)}</td><td>{estimatorName(row.estimator)}</td><td>{row.recoveredOffsetMs?.toFixed(1) ?? '—'} ms</td><td>{row.expectedOffsetMs?.toFixed(1) ?? '—'} ms</td><td>{row.recoveredOffsetSdMs?.toFixed(1) ?? '—'} ms</td></tr>)}</tbody></table></div></>}
     <PlotLegend records={records} sensors={sensors} />
     <SweepPlot records={records} sensors={sensors} />
     <div className="sweep-chart-grid"><ErrorHistogram records={records} sensors={sensors} /><SensorTimingPlot records={records} sensors={sensors} /></div>
@@ -199,8 +200,9 @@ function SensorTimingPlot({ records, sensors }: { records: SweepRecord[], sensor
   return <figure><figcaption>Configured mean observation − reported time</figcaption><svg className="summary-plot" viewBox="0 0 360 150" role="img" aria-label="Sensor observation time offsets"><line x1="30" x2="345" y1="75" y2="75" stroke="#89969a"/>{means.map((mean, index) => {
     const height = Math.abs(mean) / limit * 52
     const y = mean >= 0 ? 75 - height : 75
-    return <g key={ids[index]}><title>{sensorName(sensors, ids[index])}</title><rect x={52 + index * 96} y={y} width="52" height={height} fill={PLOT_COLOURS[index]}/><text x={78 + index * 96} y="136" textAnchor="middle">S{sensors.findIndex((sensor) => sensor.instanceId === ids[index]) + 1}</text><text x={78 + index * 96} y={mean >= 0 ? y - 5 : y + height + 12} textAnchor="middle">{mean.toFixed(1)} ms</text></g>
-  })}</svg><div className="method-note">{ids.map((id) => <div key={id}>{sensorName(sensors, id)}</div>)}</div></figure>
+    const fallback = records.find((row) => row.sensor === ids[index])?.sensorName
+    return <g key={ids[index]}><title>{sensorName(sensors, ids[index], fallback)}</title><rect x={52 + index * 96} y={y} width="52" height={height} fill={PLOT_COLOURS[index]}/><text x={78 + index * 96} y="136" textAnchor="middle">S{index + 1}</text><text x={78 + index * 96} y={mean >= 0 ? y - 5 : y + height + 12} textAnchor="middle">{mean.toFixed(1)} ms</text></g>
+  })}</svg><div className="method-note">{ids.map((id) => <div key={id}>{sensorName(sensors, id, records.find((row) => row.sensor === id)?.sensorName)}</div>)}</div></figure>
 }
 function SweepPlot({ records, sensors }: { records: SweepRecord[], sensors: PlacedSensor[] }) {
   const series = plotSeries(records, sensors)

@@ -2,12 +2,13 @@ import { contourEstimate, geometricEstimate } from './estimators'
 import { estimatorInputFromFrame, evaluateEstimate } from './estimation'
 import { wrapDeg } from './geometry'
 import { generateFrame } from './sampling'
-import type { PlacedSensor, SweepRecord, TargetConfig } from './types'
+import type { EstimateResult, PlacedSensor, SampleFrame, SweepRecord, TargetConfig } from './types'
 
 export type SweepEstimator = 'contour' | 'geometric'
 
 export interface SweepSummary {
   sensor: string
+  sensorName: string
   estimator: SweepEstimator
   acquisitions: number
   accepted: number
@@ -20,11 +21,21 @@ export interface SweepSummary {
 
 export interface PairwiseOffset {
   fromSensor: string
+  fromSensorName: string
   toSensor: string
+  toSensorName: string
   estimator: SweepEstimator
   recoveredOffsetMs: number | null
   recoveredOffsetSdMs: number | null
   expectedOffsetMs: number | null
+}
+
+export interface SweepVisualSnapshot {
+  sensor: string
+  sensorName: string
+  acquisition: number
+  frame: SampleFrame
+  results: EstimateResult[]
 }
 
 export interface SweepRunOptions {
@@ -53,7 +64,7 @@ const percentile = (values: number[], fraction: number): number => {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower)
 }
 
-export const summariseSweep = (records: SweepRecord[], sensor: string, estimator: SweepEstimator): SweepSummary => {
+export const summariseSweep = (records: SweepRecord[], sensor: string, sensorName: string, estimator: SweepEstimator): SweepSummary => {
   const selected = records.filter((row) => row.sensor === sensor && row.estimator === estimator)
   const errors = selected.flatMap((row) => row.errorDeg === null ? [] : [row.errorDeg])
   const absolute = errors.map(Math.abs)
@@ -63,6 +74,7 @@ export const summariseSweep = (records: SweepRecord[], sensor: string, estimator
     : Number.NaN
   return {
     sensor,
+    sensorName,
     estimator,
     acquisitions: selected.length,
     accepted: errors.length,
@@ -81,24 +93,30 @@ export const runSweep = (
   acquisitions: number,
   estimators: SweepEstimator[],
   searchResolutionDeg = 1,
-  onProgress?: (fraction: number, checkpoint: SweepRecord[]) => void,
+  onProgress?: (fraction: number, checkpoint: SweepRecord[], visuals: SweepVisualSnapshot[]) => void,
   rotations = 1,
   initialAngleDeg = 0,
+  includeVisuals = false,
 ): { records: SweepRecord[], summaries: SweepSummary[], pairwiseOffsets: PairwiseOffset[] } => {
   validateSweepSettings(rpm, acquisitions, rotations, searchResolutionDeg)
   if (!estimators.length) throw new Error('Select at least one estimator')
   const records: SweepRecord[] = []
   let checkpointStart = 0
   for (let acquisition = 0; acquisition < acquisitions; acquisition += 1) {
+    const checkpointDue = (acquisition + 1) % Math.max(1, Math.ceil(acquisitions / 20)) === 0 || acquisition + 1 === acquisitions
+    const acquisitionVisuals: SweepVisualSnapshot[] = []
     const start = acquisition * (rpm > 0 ? rotations * 60 / rpm / acquisitions : 0.03)
     for (const sensor of sensors) {
       const frame = generateFrame(sensor, target, rpm, initialAngleDeg + (rpm > 0 ? 360 * rotations * acquisition / acquisitions : 0), start, acquisition)
       const input = estimatorInputFromFrame(frame, target, searchResolutionDeg)
+      const visualResults: EstimateResult[] = []
       for (const estimator of estimators) {
         const result = evaluateEstimate(estimator === 'geometric' ? geometricEstimate(input) : contourEstimate(input), frame.trueAngleAtReportedDeg, rpm)
+        visualResults.push(result)
         records.push({
           acquisition,
           sensor: sensor.instanceId,
+          sensorName: sensor.name,
           trueAngleDeg: frame.trueAngleAtReportedDeg,
           reportedTimeS: frame.reportedTimeS,
           meanObservationTimeS: frame.meanObservationTimeS,
@@ -109,13 +127,13 @@ export const runSweep = (
           reason: result.reason ?? '',
         })
       }
+      if (checkpointDue && includeVisuals) acquisitionVisuals.push({ sensor: sensor.instanceId, sensorName: sensor.name, acquisition, frame: displaySnapshot(frame), results: visualResults })
     }
-    const checkpointDue = (acquisition + 1) % Math.max(1, Math.ceil(acquisitions / 20)) === 0 || acquisition + 1 === acquisitions
-    onProgress?.((acquisition + 1) / acquisitions, checkpointDue ? records.slice(checkpointStart) : [])
+    onProgress?.((acquisition + 1) / acquisitions, checkpointDue ? records.slice(checkpointStart) : [], checkpointDue ? acquisitionVisuals : [])
     if (checkpointDue) checkpointStart = records.length
   }
   const summaries = sensors.flatMap((sensor) => estimators.map((estimator) =>
-    summariseSweep(records, sensor.instanceId, estimator)))
+    summariseSweep(records, sensor.instanceId, sensor.name, estimator)))
 
   const pairwiseOffsets: PairwiseOffset[] = []
   if (sensors.length >= 2) {
@@ -138,9 +156,32 @@ export const runSweep = (
       const sd = offsets.length > 1
         ? Math.sqrt(offsets.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (offsets.length - 1))
         : 0
-      pairwiseOffsets.push({ fromSensor: first.instanceId, toSensor: second.instanceId, estimator, recoveredOffsetMs: offsets.length ? mean : null, recoveredOffsetSdMs: offsets.length > 1 ? sd : null, expectedOffsetMs: expected.length ? expected.reduce((sum, value) => sum + value, 0) / expected.length : null })
+      pairwiseOffsets.push({ fromSensor: first.instanceId, fromSensorName: first.name, toSensor: second.instanceId, toSensorName: second.name, estimator, recoveredOffsetMs: offsets.length ? mean : null, recoveredOffsetSdMs: offsets.length > 1 ? sd : null, expectedOffsetMs: expected.length ? expected.reduce((sum, value) => sum + value, 0) / expected.length : null })
     }
     }
   }
   return { records, summaries, pairwiseOffsets }
+}
+
+const displaySnapshot = (frame: SampleFrame): SampleFrame => {
+  const stride = Math.max(1, Math.ceil(frame.classes.length / 20_000))
+  const length = Math.ceil(frame.classes.length / stride)
+  const xMm = new Float64Array(length)
+  const yMm = new Float64Array(length)
+  const classes = new Uint8Array(length)
+  for (let source = 0, destination = 0; source < frame.classes.length; source += stride, destination += 1) {
+    xMm[destination] = frame.xMm[source]
+    yMm[destination] = frame.yMm[source]
+    classes[destination] = frame.classes[source]
+  }
+  return {
+    ...frame,
+    xMm,
+    yMm,
+    classes,
+    radiusMm: new Float64Array(),
+    phiRad: new Float64Array(),
+    observationTimeS: new Float64Array(),
+    inWorkingBand: new Uint8Array(),
+  }
 }

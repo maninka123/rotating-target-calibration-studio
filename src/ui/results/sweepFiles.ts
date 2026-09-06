@@ -1,6 +1,7 @@
 import { serialiseConfiguration } from '../../core/config'
 import type { SimulationConfig, SweepRecord } from '../../core/types'
-import type { PairwiseOffset, SweepRunOptions, SweepSummary } from '../../core/sweep'
+import type { PairwiseOffset, SweepRunOptions, SweepSummary, SweepVisualSnapshot } from '../../core/sweep'
+import { drawSamples } from '../shared/plots'
 
 export interface SweepOutputDetails { pairwiseOffsets: PairwiseOffset[], run: SweepRunOptions, checkpoints?: SweepRecord[][] }
 
@@ -12,12 +13,12 @@ export const sweepFolderName = (config: SimulationConfig, date = new Date(), rot
 }
 
 export const sweepRecordsCsv = (records: SweepRecord[]): string => {
-  const keys: (keyof SweepRecord)[] = ['acquisition', 'sensor', 'estimator', 'accepted', 'trueAngleDeg', 'reportedTimeS', 'meanObservationTimeS', 'errorDeg', 'timingErrorS', 'reason']
+  const keys: (keyof SweepRecord)[] = ['acquisition', 'sensor', 'sensorName', 'estimator', 'accepted', 'trueAngleDeg', 'reportedTimeS', 'meanObservationTimeS', 'errorDeg', 'timingErrorS', 'reason']
   const cell = (value: unknown) => value === null ? '' : typeof value === 'string' ? `"${value.replaceAll('"', '""')}"` : String(value)
   return [keys.join(','), ...records.map((row) => keys.map((key) => cell(row[key])).join(','))].join('\n')
 }
 
-const writeFile = async (folder: FileSystemDirectoryHandle, name: string, content: string): Promise<void> => {
+const writeFile = async (folder: FileSystemDirectoryHandle, name: string, content: string | Blob): Promise<void> => {
   const file = await folder.getFileHandle(name, { create: true })
   const writable = await file.createWritable()
   await writable.write(content)
@@ -42,10 +43,24 @@ export async function saveSweepFolder(
   ])
 }
 
-export async function saveSweepCheckpoint(parent: FileSystemDirectoryHandle, folderName: string, index: number, records: SweepRecord[]): Promise<void> {
+const visualPng = async (visual: SweepVisualSnapshot, config: SimulationConfig): Promise<Blob> => {
+  const canvas = document.createElement('canvas')
+  canvas.style.width = '960px'
+  canvas.style.height = '600px'
+  drawSamples(canvas, visual.frame, config.target, visual.results, { width: 960, height: 600 })
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not encode checkpoint PNG')), 'image/png'))
+}
+
+export async function saveSweepCheckpoint(parent: FileSystemDirectoryHandle, folderName: string, index: number, records: SweepRecord[], visuals: SweepVisualSnapshot[] = [], config?: SimulationConfig): Promise<void> {
   const folder = await parent.getDirectoryHandle(folderName, { create: true })
   const checkpoints = await folder.getDirectoryHandle('checkpoints', { create: true })
-  await writeFile(checkpoints, `acquisitions-${String(index).padStart(3, '0')}.csv`, sweepRecordsCsv(records))
+  const checkpoint = await checkpoints.getDirectoryHandle(`checkpoint-${String(index).padStart(3, '0')}`, { create: true })
+  await writeFile(checkpoint, 'acquisitions.csv', sweepRecordsCsv(records))
+  if (config) await Promise.all(visuals.map(async (visual, sensorIndex) => {
+    const acquisition = String(visual.acquisition).padStart(5, '0')
+    const name = `S${sensorIndex + 1}-${safeSegment(visual.sensorName)}-acquisition-${acquisition}-detections-and-templates.png`
+    await writeFile(checkpoint, name, await visualPng(visual, config))
+  }))
 }
 
 export function downloadSweepPackage(folderName: string, config: SimulationConfig, records: SweepRecord[], summaries: SweepSummary[], details: SweepOutputDetails): void {

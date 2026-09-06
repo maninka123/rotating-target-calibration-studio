@@ -1,6 +1,6 @@
 # Validation report
 
-Validation date: 6 September 2026. This report distinguishes automated checks, measured diagnostic runs and remaining limitations. Sampling counts are outputs of generated scan rays; no nominal band density or target sample count is stored in sensor definitions.
+Validation date: 7 September 2026. This report distinguishes automated checks, measured diagnostic runs and remaining limitations. Sampling counts are outputs of generated scan rays; no nominal band density or target sample count is stored in sensor definitions.
 
 ## Selected correctness repairs
 
@@ -23,6 +23,8 @@ Validation date: 6 September 2026. This report distinguishes automated checks, m
 | Sweep settings | Reject invalid count, RPM, step and rotations | Core validation and numeric fields enforce finite ranges | Pass |
 | Sample-count acceptance boundaries | Exactly 50 samples and 3/class evaluated | Existing expectations preserved with non-collinear fixtures | Pass |
 | Intermediate checkpoints | Each acquisition saved once in ordered batches | Checkpoint sequence test covers all 20 acquisitions without duplicates | Pass |
+| Intermediate visual output | Detection/template PNG for every sensor at each checkpoint | Browser save test observes generated PNG files; images use the actual checkpoint frame and estimator outputs | Pass |
+| Sweep sensor identity | Human-readable name retained independently of current UI state | Record, summary, pairwise table, CSV and JSON tests preserve configured names | Pass |
 | Saved run contents | Acquisition CSV, summary, configuration, pair offsets, explicit run options | All five files verified with a test directory handle | Pass |
 | CSV escaping | Embedded quotes doubled | Quoted/comma field regression passes | Pass |
 | Pitch eligibility | Only genuinely asymmetric elevation limits | Symmetric limits and camera definitions excluded | Pass |
@@ -98,7 +100,7 @@ Informational band counts, dual-aperture target, default stand-offs and acquisit
 | Playwright | Pass — 7/7 tests, including the 60-second three-sensor run without console errors |
 | 3D coverage legend | Pass — live sensor names, matching coverage colours and removal of inactive entries |
 
-The browser suite includes exact worker-frame comparison, paused refresh, stale-result invalidation, valid/invalid geometry edits, focus retention during playback, zero-value entry, FOV warning fixes, output saving, subpath loading and the existing 60-second three-sensor run. An initial parallel browser run timed out under shared rendering load; the final suite runs serially and passes in 1.5 minutes. The local run reused an explicitly started production preview because unopened loopback ports stalled readiness checks in this environment. CI retains automatic preview startup.
+The browser suite includes exact worker-frame comparison, paused refresh, stale-result invalidation, valid/invalid geometry edits, focus retention during playback, zero-value entry, FOV warning fixes, named sweep tables, checkpoint PNG output, subpath loading and the existing 60-second three-sensor run. An initial parallel browser run timed out under shared rendering load; the final suite runs serially and passes in 1.5 minutes. The local run reused an explicitly started production preview because unopened loopback ports stalled readiness checks in this environment. CI retains automatic preview startup.
 
 The first hosted CI run passed all unit/build checks and six of seven browser tests. Its dense-camera result assertion timed out at the implicit five-second limit. That asynchronous assertion now uses the same 30-second allowance as the other estimator-output assertion; the expected count and all numerical expectations are unchanged. Hosted rerun status is available in the repository's CI history.
 

@@ -93,10 +93,17 @@ describe('sweep and sensor validation', () => {
   })
   it('zero RPM holds the selected orientation throughout every acquisition', () => {
     const checkpoints: number[] = []
-    const result = runSweep(DUAL_APERTURE, [place('hesai-ft120')], 0, 20, ['contour'], 1, (_, rows) => { checkpoints.push(...rows.map((row) => row.acquisition)) }, 2, 73)
+    const visualAcquisitions: number[] = []
+    const result = runSweep(DUAL_APERTURE, [place('hesai-ft120')], 0, 20, ['contour'], 1, (_, rows, visuals) => {
+      checkpoints.push(...rows.map((row) => row.acquisition))
+      visualAcquisitions.push(...visuals.map((visual) => visual.acquisition))
+      expect(visuals.every((visual) => visual.sensorName === 'Hesai FT120' && visual.frame.classes.length <= 20_000 && visual.results.length === 1)).toBe(true)
+    }, 2, 73, true)
     expect(new Set(result.records.map((row) => row.trueAngleDeg))).toEqual(new Set([73]))
     expect(result.records.every((row) => row.timingErrorS === null)).toBe(true)
     expect(checkpoints).toEqual(Array.from({ length: 20 }, (_, index) => index))
+    expect(visualAcquisitions).toEqual(Array.from({ length: 20 }, (_, index) => index))
+    expect(new Set(result.records.map((row) => row.sensorName))).toEqual(new Set(['Hesai FT120']))
   })
   it.each([0, -1, 1.5, Infinity])('rejects invalid acquisition count %s', (count) => {
     expect(() => runSweep(DUAL_APERTURE, [camera], 5, count, ['contour'])).toThrow(/acquisitions/)

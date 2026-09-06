@@ -46,7 +46,18 @@ npm run preview
 - Configuration JSON import/export and a persistent custom sensor builder.
 - Six one-click teaching and validation scenarios.
 
-Sweep mode repeats acquisitions over one or more target revolutions; at 0 RPM it holds the selected orientation. The review shows geometry, sensors, 0–20 RPM, revolution count and a completion estimate measured using a trial acquisition in this browser. It keeps a snapshot of the reviewed settings while the live view continues independently. Supported browsers save acquisition CSV, summary JSON, pairwise offsets, run settings and configuration in a timestamped folder. Optional checkpoints are written during the run. Other browsers download a JSON package; checkpoints are retained in memory until completion or cancellation. A Cancel sweep button stops computation and preserves completed checkpoints.
+### Sweep workflow
+
+Before a sweep starts, a review dialog shows the target, sensors, RPM, number of rotations, acquisition count and an estimated completion time. The reviewed settings are frozen for the batch, while the live simulation remains independent.
+
+During a sweep:
+
+- positive RPM distributes acquisitions across the requested revolutions;
+- 0 RPM keeps the selected orientation fixed;
+- progress and completed acquisitions remain visible;
+- cancellation preserves checkpoints already completed.
+
+Supported browsers create a timestamped results folder containing CSV and JSON summaries with readable sensor names. Optional checkpoint folders add one detection/template PNG per sensor. Browsers without folder access download one JSON data package instead.
 
 ![Face-on rotation view](docs/rotation-view.png)
 
@@ -61,17 +72,53 @@ Sweep mode repeats acquisitions over one or more target revolutions; at 0 RPM it
 
 ## Adding a custom sensor
 
-Open **Panel 2 — Sensor configuration**, select **Build a custom sensor**, choose an architecture, enter its optics or FOV, stand-off and scan parameters, then save it. Camera FOV is derived from resolution, pixel pitch and focal length; it is never stored separately. The preview generates the resulting rays and reports the counted band samples before saving. Custom definitions use the same `SensorDefinition` schema and code path as built-ins and persist in browser `localStorage`.
+Use **Panel 2 — Sensor configuration**:
 
-For source-controlled sensors, add a JSON-serialisable object to `src/sensors/library.ts`. Architecture-specific optional fields are defined in `src/core/types.ts`.
+1. Open **Build a custom sensor**.
+2. Choose an architecture and enter a name.
+3. Set the stand-off, timing and architecture-specific scan parameters.
+4. Review the generated ray count, working-band samples and samples across the target.
+5. Save the sensor.
+
+For cameras, enter resolution, pixel pitch and focal length. The application derives the FOV from those optics, so camera FOV is not entered separately.
+
+Saved custom sensors use the same `SensorDefinition` schema and sampling path as built-ins. They persist in browser `localStorage` and can be carried with a full configuration JSON export.
+
+To add a built-in sensor in source code, add a JSON-serialisable definition to `src/sensors/library.ts`. Architecture-specific fields are defined in `src/core/types.ts`.
 
 ## Implemented physics
 
-For each sample ray, the target-plane intersection is evaluated analytically in double precision. Radius and polar angle determine material/aperture/background class at that sample’s own observation time. The background plane is visual only and does not affect analytic sampling. Rim-connected aperture cut-outs extend from their inner radii to the outer edge. Only the annulus from hub radius to outer radius enters estimation.
+### Ray sampling and classification
 
-Rotating heads enumerate every channel and azimuth step, producing fixed-height scan rings. Risley-prism sensors trace acquisition-dependent rosettes. The micro-mirror uses a sinusoidal horizontal scan and a phase-shifted vertical scan whose triangular amplitude ramp produces an eye-shaped pattern. The Mid-360 uses its asymmetric −7° to +52° elevation limits, optional pitch and a non-repeating rotating-mirror pattern. Fixed arrays and cameras use rectangular angular grids; the single-plane scanner produces a zero-elevation fan.
+Every sample is an analytic, double-precision ray–plane intersection—never a rendered pixel read-back. At each sample’s own observation time, its target-plane radius and angle determine one of three classes:
 
-Reported timestamps are defined explicitly: instantaneous means the first sample observation, accumulation-window start means the frame/window start, exposure midpoint means the midpoint of the full sample span, and rolling readout means the start of the first row exposure. Each rolling row is observed at the midpoint of its own exposure interval.
+- **Material:** the ray hits the solid target face.
+- **Aperture:** the ray passes through a rim-connected cut-out.
+- **Background:** the ray misses the target or passes through an aperture.
+
+Only samples in the working annulus—from the hub radius to the outer radius—enter estimation. The background-plane distance is visual only and does not alter analytic sampling.
+
+### Sensor scan patterns
+
+- **Rotating heads:** every channel elevation and azimuth step is generated, producing fixed-height scan rings.
+- **Risley prisms:** acquisition-dependent, non-repeating rosettes fill progressively over time.
+- **Oscillating micro-mirror:** sinusoidal horizontal motion and phase-shifted, ramped vertical motion form an eye-shaped pattern.
+- **Livox Mid-360:** a non-repeating rotating-mirror pattern uses asymmetric −7° to +52° elevation limits and optional pitch.
+- **Solid-state arrays and cameras:** rectangular angular grids derived from array geometry or camera optics.
+- **Single-plane scanner:** a horizontal fan with zero elevation extent.
+
+### Per-sample time and reported timestamps
+
+Sample observation time follows the device’s scan order. The reported acquisition timestamp is configured separately:
+
+- **Instantaneous:** first sample observation.
+- **Accumulation-window start:** start of the frame or accumulation window.
+- **Exposure midpoint:** midpoint of the complete sample span.
+- **Rolling readout:** start of the first row exposure; each row is observed at the midpoint of its own exposure interval.
+
+This distinction is what allows the simulator to expose intra-acquisition distortion and timestamp offsets.
+
+### Target sensitivity
 
 Angular sensitivity is
 
@@ -79,7 +126,11 @@ Angular sensitivity is
 Λ = Σ 2(R³ − ρₖ³) / 3
 ```
 
-where isolated annular sectors each contribute two radial boundaries. Touching sectors use their geometric union: a shared boundary contributes only its exposed radial segment, and matching inner radii remove that boundary entirely. Angular dispersion scales as `SD ∝ Λ⁻¹ᐟ²`. A target with no angular boundaries has unobservable orientation.
+where `R` is the outer radius and `ρₖ` is an aperture’s inner radius. Isolated sectors each contribute two radial boundaries. Touching sectors use their geometric union: only exposed boundary segments contribute, and a shared boundary with matching inner radii disappears entirely.
+
+Angular dispersion scales as `SD ∝ Λ⁻¹ᐟ²`. A target without angular boundaries has no observable orientation.
+
+### Area and mechanical checks
 
 Sector area is `α(R² − ρ²)/2`. Removed-sector centroid radius is
 
@@ -87,13 +138,27 @@ Sector area is `α(R² − ρ²)/2`. Removed-sector centroid radius is
 r̄ = (2/3) (R³ − ρ³)/(R² − ρ²) · sin(α/2)/(α/2)
 ```
 
-and remaining-plate eccentricity follows from removed-area moments. Plate checks use aluminium density 2700 kg/m³, `E = 70 GPa`, gravity 9.81 m/s² and a 0.05 mm deflection limit.
+The remaining-plate eccentricity follows from the combined removed-area moments. Plate checks use:
 
-The geometric boundary-fit estimator performs a configurable-resolution global 0–360° class-agreement search, applies a clipped boundary tolerance, then refines the best interval by golden-section search. The default coarse search step is 1°. Its local curvature proxy describes numerical sharpness near the selected minimum; it is not a statistical uncertainty.
+- aluminium density: `2700 kg/m³`;
+- elastic modulus: `70 GPa`;
+- gravity: `9.81 m/s²`;
+- tip-deflection limit: `0.05 mm`.
 
-Both estimators reject unobservable and rotationally symmetric layouts before searching, independently of the search step. Two-dimensional support is measured from the working-band positions. Contour matching extracts angular regions and uses their measured end angles, avoiding a half-bin orientation offset. Frozen-frame estimation uses the exact displayed sample arrays. Paused geometry and sensor edits refresh those arrays and invalidate previous estimates.
+### Orientation estimators
 
-Sweep plots distinguish each sensor/estimator series and name sensors consistently. Pairwise offset is defined as the first sensor's observation/report lag minus the second's; the table compares recovered offsets with the expected lags over the same accepted pairs. Recovery assumes constant angular speed and is undefined at 0 RPM.
+- **Contour matching** extracts aperture-supported angular regions and matches their measured widths, inner radii and endpoints to the known target geometry.
+- **Geometric boundary fit** searches 0–360° for the best class agreement, applies a clipped boundary tolerance, then refines the best interval with golden-section search. The default coarse step is 1°.
+
+Both estimators reject unobservable or rotationally symmetric layouts before searching. They also verify two-dimensional support from the actual working-band positions. The displayed local curvature proxy describes numerical sharpness near the geometric minimum; it is not a statistical uncertainty.
+
+Frozen-frame estimation uses the exact displayed sample arrays. Changing target or sensor settings while paused refreshes those arrays and invalidates obsolete results.
+
+### Sweep statistics and sensor timing
+
+Sweep mode reports MAE, median absolute error, SD, P95 and rejection rate for every sensor/estimator pair. Plots show signed error against true angle, error distributions and mean observation-time offsets.
+
+Pairwise offset is defined as the first sensor’s observation/report lag minus the second’s. Recovered and expected offsets use the same accepted acquisition pairs. Recovery assumes constant angular speed and is undefined at 0 RPM.
 
 ![Estimation overlay](docs/estimation-overlay.png)
 

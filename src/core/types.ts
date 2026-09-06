@@ -150,6 +150,7 @@ export interface SimulationConfig {
 export interface SweepRecord {
   acquisition: number
   sensor: string
+  sensorName: string
   trueAngleDeg: number
   reportedTimeS: number
   meanObservationTimeS: number

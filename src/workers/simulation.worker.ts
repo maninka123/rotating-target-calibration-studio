@@ -7,7 +7,7 @@ import type { PlacedSensor, SampleFrame, TargetConfig } from '../core/types'
 type Request =
   | { id: number, type: 'frame', sensor: PlacedSensor, target: TargetConfig, rpm: number, angleDeg: number, startS: number, acquisitionIndex: number }
   | { id: number, type: 'estimate', frame: SampleFrame, target: TargetConfig, rpm: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
-  | { id: number, type: 'sweep', sensors: PlacedSensor[], target: TargetConfig, rpm: number, angleDeg: number, rotations: number, acquisitions: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
+  | { id: number, type: 'sweep', sensors: PlacedSensor[], target: TargetConfig, rpm: number, angleDeg: number, rotations: number, acquisitions: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number, includeVisuals: boolean }
   | { id: number, type: 'benchmark', sensors: PlacedSensor[], target: TargetConfig, rpm: number, angleDeg: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
 
 self.onmessage = (event: MessageEvent<Request>) => {
@@ -37,9 +37,10 @@ self.onmessage = (event: MessageEvent<Request>) => {
       request.acquisitions,
       request.estimators,
       request.searchResolutionDeg,
-      (fraction, checkpoint) => self.postMessage({ id: request.id, type: 'progress', fraction, checkpoint }),
+      (fraction, checkpoint, visuals) => self.postMessage({ id: request.id, type: 'progress', fraction, checkpoint, visuals }),
       request.rotations,
       request.angleDeg,
+      request.includeVisuals,
     )
     self.postMessage({ id: request.id, type: 'sweep', ...result })
   } catch (error) {

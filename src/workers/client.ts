@@ -1,10 +1,11 @@
 import type { SweepRecord } from '../core/types'
+import type { SweepVisualSnapshot } from '../core/sweep'
 type WorkerReply = { id: number, type: string, [key: string]: unknown }
 
 export class SimulationWorkerClient {
   private worker?: Worker
   private nextId = 1
-  private pending = new Map<number, { resolve: (value: WorkerReply) => void, reject: (reason: Error) => void, progress?: (fraction: number, checkpoint: SweepRecord[]) => void }>()
+  private pending = new Map<number, { resolve: (value: WorkerReply) => void, reject: (reason: Error) => void, progress?: (fraction: number, checkpoint: SweepRecord[], visuals: SweepVisualSnapshot[]) => void }>()
 
   private ensureWorker(): Worker {
     if (this.worker) return this.worker
@@ -14,7 +15,7 @@ export class SimulationWorkerClient {
       const pending = this.pending.get(reply.id)
       if (!pending) return
       if (reply.type === 'progress') {
-        pending.progress?.(Number(reply.fraction), (reply.checkpoint as SweepRecord[]) ?? [])
+        pending.progress?.(Number(reply.fraction), (reply.checkpoint as SweepRecord[]) ?? [], (reply.visuals as SweepVisualSnapshot[]) ?? [])
         return
       }
       this.pending.delete(reply.id)
@@ -31,7 +32,7 @@ export class SimulationWorkerClient {
     return this.worker
   }
 
-  request(payload: Record<string, unknown>, progress?: (fraction: number, checkpoint: SweepRecord[]) => void): Promise<WorkerReply> {
+  request(payload: Record<string, unknown>, progress?: (fraction: number, checkpoint: SweepRecord[], visuals: SweepVisualSnapshot[]) => void): Promise<WorkerReply> {
     const id = this.nextId++
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject, progress })
