@@ -101,10 +101,10 @@ MIT — see [LICENSE](LICENSE).
 
 If you use **Rotating Target Calibration Studio** in academic research, publications, theses, or reports, please cite this repository.
 
-**Author:** Pasindu Ranasinghe
-**Affiliation:** School of Minerals and Energy Resources Engineering, UNSW Sydney, Australia
-**Year:** 2026
+- **Author:** Pasindu Ranasinghe
+- **Affiliation:** School of Minerals and Energy Resources Engineering, UNSW Sydney, Australia
+- **Year:** 2026
 
 An associated research publication is currently **under review**. The citation information will be updated once the paper is published.
 
-See `CITATION.cff` for the recommended software citation.
+See [CITATION.cff](CITATION.cff) for the recommended software citation.
