@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite this repository."
+title: "Rotating Target Calibration Studio"
+type: software
+authors:
+  - family-names: "Ranasinghe"
+    given-names: "Pasindu"
+    affiliation: "School of Minerals and Energy Resources Engineering, UNSW Sydney, Australia"
+repository-code: "https://github.com/maninka123/rotating-target-calibration-studio"
