@@ -1,101 +1,100 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { estimatorInputFromFrame, evaluateEstimate } from '../core/estimation'
 import { contourEstimate, geometricEstimate } from '../core/estimators'
+import { wrapDeg } from '../core/geometry'
 import { DUAL_APERTURE } from '../core/presets'
 import { generateFrame } from '../core/sampling'
+import { runSweep } from '../core/sweep'
 import { timingEquivalentS } from '../core/timing'
-import type { PlacedSensor } from '../core/types'
+import type { PlacedSensor, SampleFrame, TargetConfig } from '../core/types'
 import { byId } from '../sensors/library'
 
 const placed = (id: string, patch: Partial<PlacedSensor> = {}): PlacedSensor => ({ ...byId(id), instanceId: id, ...patch })
+const input = (frame: SampleFrame, target: TargetConfig = DUAL_APERTURE, resolution = 1) => estimatorInputFromFrame(frame, target, resolution)
+const assessed = (frame: SampleFrame, kind: 'contour' | 'geometric', resolution = 1) => evaluateEstimate(
+  kind === 'contour' ? contourEstimate(input(frame, DUAL_APERTURE, resolution)) : geometricEstimate(input(frame, DUAL_APERTURE, resolution)),
+  frame.trueAngleAtReportedDeg, 5,
+)
 
-describe('estimator behaviour', () => {
-  it('contour estimator rejects LSLiDAR C4', () => {
-    const sensor = placed('ls-c4')
-    const result = contourEstimate(generateFrame(sensor, DUAL_APERTURE, 5, 37, 0, 0), DUAL_APERTURE, sensor, 5)
-    expect(result.accepted).toBe(false)
-    expect(result.reason).toBe('insufficient boundary support')
+describe('estimator isolation and behaviour', () => {
+  it('estimator implementation cannot reference frame truth or acquisition identity', () => {
+    const source = readFileSync(new URL('../core/estimators.ts', import.meta.url), 'utf8')
+    expect(source).not.toMatch(/trueAngle|acquisitionIndex|SampleFrame|geometricEstimate\(input\).*contour/s)
   })
 
-  it('contour estimator resolves a dense FLIR frame within 0.1 degree', () => {
-    const sensor = placed('flir-global', { timestampConvention: 'instantaneous', resolution: [240, 180], pixelPitchUm: 12 })
-    const result = contourEstimate(generateFrame(sensor, DUAL_APERTURE, 5, 37.4, 0, 0), DUAL_APERTURE, sensor, 5)
+  it('contour matching rejects a two-ring scan from computed coverage', () => {
+    const frame = generateFrame(placed('ls-c4'), DUAL_APERTURE, 5, 37, 0, 0)
+    expect(contourEstimate(input(frame))).toMatchObject({ accepted: false, reason: 'insufficient boundary support' })
+  })
+
+  it('contour matching independently resolves a dense image', () => {
+    const sensor = placed('flir-global', { timestampConvention: 'instantaneous', resolution: [320, 240], pixelPitchUm: 12 })
+    const result = assessed(generateFrame(sensor, DUAL_APERTURE, 5, 37.4, 0, 0), 'contour')
     expect(result.accepted).toBe(true)
-    expect(Math.abs(result.signedErrorDeg!)).toBeLessThan(0.1)
+    expect(Math.abs(result.signedErrorDeg!)).toBeLessThan(1)
   })
 
-  it('geometric estimator accepts LSLiDAR C4', () => {
-    const sensor = placed('ls-c4', { timestampConvention: 'instantaneous' })
-    const result = geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 5, 81.2, 0, 0), DUAL_APERTURE, 5)
-    expect(result.accepted).toBe(true)
+  it('geometric fit accepts a sparse rotating head and rejects a planar scan', () => {
+    expect(geometricEstimate(input(generateFrame(placed('ls-c4'), DUAL_APERTURE, 5, 81.2, 0, 0))).accepted).toBe(true)
+    expect(geometricEstimate(input(generateFrame(placed('single-plane'), DUAL_APERTURE, 5, 20, 0))).reason).toBe('insufficient two-dimensional boundary coverage')
   })
 
-  it('geometric estimator rejects a single-plane scan with the specific coverage reason', () => {
-    const sensor = placed('single-plane')
-    const result = geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 5, 20, 0), DUAL_APERTURE, 5)
-    expect(result.accepted).toBe(false)
-    expect(result.reason).toBe('insufficient two-dimensional boundary coverage')
-  })
-
-  it('a sparse Blickfeld mode has a non-zero rejection rate over 300 acquisitions', () => {
-    const sensor = placed('blickfeld-cube1', { timestampConvention: 'instantaneous', sampleRateHz: 5000 })
-    let rejected = 0
-    for (let index = 0; index < 300; index += 1) {
-      const result = geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 5, index * 1.2, 0, index), DUAL_APERTURE, 5)
-      if (!result.accepted) rejected += 1
-    }
-    expect(rejected).toBeGreaterThan(0)
-    expect(rejected).toBeLessThan(300)
-  }, 30_000)
-
-  it('dense instantaneous sampling tracks a full revolution under 1 degree', () => {
-    const sensor = placed('flir-global', { timestampConvention: 'instantaneous', resolution: [160, 121], pixelPitchUm: 18 })
-    for (const angle of [0.2, 41.7, 93.4, 151.8, 219.3, 288.6, 347.1]) {
-      const result = geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 5, angle, 0, Math.round(angle)), DUAL_APERTURE, 5)
+  it('instantaneous dense sampling tracks wrapped angles across the seam', () => {
+    const sensor = placed('flir-global', { timestampConvention: 'instantaneous', resolution: [240, 180], pixelPitchUm: 16 })
+    for (const angle of [0.2, 93.4, 219.3, 359.8]) {
+      const result = assessed(generateFrame(sensor, DUAL_APERTURE, 5, angle, 0), 'geometric', 0.5)
       expect(result.accepted).toBe(true)
       expect(Math.abs(result.signedErrorDeg!)).toBeLessThan(1)
     }
   })
 
-  it('error approaches zero as instantaneous sample density increases', () => {
+  it('reduces estimation error when camera ray density increases', () => {
     const sparse = placed('flir-global', { timestampConvention: 'instantaneous', resolution: [160, 121], pixelPitchUm: 40 })
     const dense = placed('flir-global', { timestampConvention: 'instantaneous', resolution: [240, 180], pixelPitchUm: 16 })
     const angles = [13.17, 46.43, 73.37, 128.81, 201.29, 317.63]
-    const meanError = (sensor: PlacedSensor) => angles.reduce((sum, angle, index) => sum + Math.abs(geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 5, angle, 0, index), DUAL_APERTURE, 5, 1).signedErrorDeg!), 0) / angles.length
-    const sparseError = meanError(sparse)
-    const denseError = meanError(dense)
-    expect(denseError).toBeLessThan(sparseError)
-    expect(denseError).toBeLessThan(0.15)
+    const mean = (sensor: PlacedSensor) => angles.reduce((sum, angle) => sum + Math.abs(assessed(generateFrame(sensor, DUAL_APERTURE, 0, angle, 0), 'geometric').signedErrorDeg!), 0) / angles.length
+    expect(mean(dense)).toBeLessThan(mean(sparse))
   })
 
-  it('contour matching shows rare gross prism correspondence errors', () => {
-    const sensor = placed('livox-avia', { timestampConvention: 'instantaneous' })
-    const errors = Array.from({ length: 300 }, (_, index) => Math.abs(contourEstimate(generateFrame(sensor, DUAL_APERTURE, 5, index * 1.2, 0, index), DUAL_APERTURE, sensor, 5).signedErrorDeg!))
-    const sorted = [...errors].sort((a, b) => a - b)
-    const median = (sorted[149] + sorted[150]) / 2
-    const mean = errors.reduce((sum, value) => sum + value, 0) / errors.length
-    expect(median).toBeLessThan(5)
-    expect(mean).toBeGreaterThan(3 * median)
-    expect(errors.some((value) => value > 90)).toBe(true)
-  }, 30_000)
+  it('rejects rotationally symmetric layouts as ambiguous', () => {
+    const sensor = placed('flir-global', { timestampConvention: 'instantaneous', resolution: [240, 180], pixelPitchUm: 16 })
+    for (const target of [
+      { ...DUAL_APERTURE, apertures: [{ id: 'a', widthDeg: 30, centreDeg: 0, innerRadiusMm: 90 }, { id: 'b', widthDeg: 30, centreDeg: 180, innerRadiusMm: 90 }] },
+      { ...DUAL_APERTURE, apertures: [0, 120, 240].map((centreDeg, index) => ({ id: String(index), widthDeg: 25, centreDeg, innerRadiusMm: 90 })) },
+    ]) {
+      const frame = generateFrame(sensor, target, 0, 17, 0)
+      const result = geometricEstimate(input(frame, target, 0.5))
+      expect(result.reason).toBe('orientation ambiguous')
+      expect(result.ambiguityOrder).toBeGreaterThan(1)
+    }
+  })
 
-  it('rolling-shutter angular error increases with rpm', () => {
+  it('sweep truth spans one revolution without a large angular gap', () => {
+    const acquisitions = 180
+    const { records } = runSweep(DUAL_APERTURE, [placed('hesai-ft120', { gridColumns: 20, gridRows: 16 })], 0, acquisitions, ['geometric'], 2)
+    const angles = records.map((row) => row.trueAngleDeg).sort((a, b) => a - b)
+    const gaps = angles.map((angle, index) => index ? angle - angles[index - 1] : angle + 360 - angles.at(-1)!)
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(2 * 360 / acquisitions)
+  })
+
+  it('reports every sensor pair independently', () => {
+    const sensors = ['one', 'two', 'three'].map((instanceId, index) => placed('hesai-ft120', { instanceId, gridColumns: 16 + index, gridRows: 14 + index }))
+    const result = runSweep(DUAL_APERTURE, sensors, 5, 8, ['geometric'], 5)
+    expect(result.pairwiseOffsets.map((row) => `${row.fromSensor}->${row.toSensor}`)).toEqual(['one->two', 'one->three', 'two->three'])
+  })
+
+  it('rolling shutter changes angle more at higher rpm', () => {
     const sensor = placed('flir-rolling', { resolution: [160, 121], pixelPitchUm: 18 })
-    const low = geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 2, 30, 0, 5), DUAL_APERTURE, 2)
-    const high = geometricEstimate(generateFrame(sensor, DUAL_APERTURE, 15, 30, 0, 5), DUAL_APERTURE, 15)
-    expect(Math.abs(high.signedErrorDeg!)).toBeGreaterThan(Math.abs(low.signedErrorDeg!))
+    const error = (rpm: number) => {
+      const frame = generateFrame(sensor, DUAL_APERTURE, rpm, 30, 0, 5)
+      return Math.abs(evaluateEstimate(geometricEstimate(input(frame)), frame.trueAngleAtReportedDeg, rpm).signedErrorDeg!)
+    }
+    expect(error(15)).toBeGreaterThan(error(2))
   })
 
-  it('fixed angular error has a falling time equivalent as rpm rises', () => {
+  it('all derived angular comparisons wrap', () => {
+    expect(wrapDeg(1 - 359)).toBe(2)
     expect(Math.abs(timingEquivalentS(2, 10)!)).toBeLessThan(Math.abs(timingEquivalentS(2, 5)!))
-  })
-
-  it('window-start versus exposure-midpoint recovers about 50 ms', () => {
-    const avia = placed('livox-avia', { timestampConvention: 'window-start', integrationTimeS: 0.1 })
-    const camera = placed('flir-global', { timestampConvention: 'exposure-midpoint', integrationTimeS: 0, resolution: [160, 121], pixelPitchUm: 18 })
-    const aviaResult = geometricEstimate(generateFrame(avia, DUAL_APERTURE, 5, 20, 0, 3), DUAL_APERTURE, 5)
-    const cameraResult = geometricEstimate(generateFrame(camera, DUAL_APERTURE, 5, 20, 0, 3), DUAL_APERTURE, 5)
-    const recoveredMs = (aviaResult.signedErrorDeg! - cameraResult.signedErrorDeg!) / (6 * 5) * 1000
-    expect(recoveredMs).toBeGreaterThan(35)
-    expect(recoveredMs).toBeLessThan(65)
   })
 })

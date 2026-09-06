@@ -1,4 +1,5 @@
-import { apertureArea, angularSensitivity, bendingStressMpa, centreOfMassEccentricity, minimumPlateThicknessMm, predictedDispersionRatio, removedAreaRelativeTo } from '../../core/geometry'
+import { apertureArea, angularSensitivity, bendingStressMpa, centreOfMassEccentricity, minimumPlateThicknessMm, overlappingAperturePair, predictedDispersionRatio, removedAreaRelativeTo } from '../../core/geometry'
+import { useState } from 'react'
 import { DUAL_APERTURE, matchesTargetPreset, SINGLE_APERTURE, TRIPLE_APERTURE } from '../../core/presets'
 import type { TargetConfig } from '../../core/types'
 import { NumberField } from '../shared/NumberField'
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function TargetDesigner({ target, onChange }: Props) {
+  const [apertureError, setApertureError] = useState('')
   const lambda = angularSensitivity(target)
   const eccentricity = centreOfMassEccentricity(target)
   const minimumThickness = minimumPlateThicknessMm(target)
@@ -18,7 +20,16 @@ export function TargetDesigner({ target, onChange }: Props) {
   const update = (key: keyof TargetConfig, value: number) => onChange({ ...target, [key]: value })
   const updateAperture = (index: number, key: 'widthDeg' | 'centreDeg' | 'innerRadiusMm', value: number) => {
     const apertures = target.apertures.map((aperture, position) => position === index ? { ...aperture, [key]: value } : aperture)
+    const overlap = overlappingAperturePair(apertures)
+    if (overlap) { setApertureError(`A${overlap[0] + 1} and A${overlap[1] + 1} overlap. Adjust the width or centre angle.`); return }
+    setApertureError('')
     onChange({ ...target, apertures })
+  }
+  const addAperture = () => {
+    const centreDeg = Array.from({ length: 36 }, (_, index) => index * 10).find((centre) => !overlappingAperturePair([...target.apertures, { id: 'candidate', widthDeg: 20, centreDeg: centre, innerRadiusMm: Math.max(target.hubRadiusMm, Math.min(100, target.outerDiameterMm / 2)) }]))
+    if (centreDeg === undefined) { setApertureError('No non-overlapping 20° aperture position is available. Narrow an existing aperture first.'); return }
+    setApertureError('')
+    onChange({ ...target, apertures: [...target.apertures, { id: crypto.randomUUID(), widthDeg: 20, centreDeg, innerRadiusMm: Math.max(target.hubRadiusMm, Math.min(100, target.outerDiameterMm / 2)) }] })
   }
   return (
     <Panel number={1} title="Target designer" className="target-panel">
@@ -35,7 +46,7 @@ export function TargetDesigner({ target, onChange }: Props) {
             <NumberField label="Plate thickness" value={target.thicknessMm} unit="mm" min={0.1} step={0.1} onChange={(value) => update('thicknessMm', value)} />
             <NumberField label="Background offset" value={target.backgroundDistanceM} unit="m" min={0.05} step={0.1} onChange={(value) => update('backgroundDistanceM', value)} />
           </div>
-          <div className="subhead"><span>Apertures</span><button onClick={() => onChange({ ...target, apertures: [...target.apertures, { id: crypto.randomUUID(), widthDeg: 20, centreDeg: 90, innerRadiusMm: 100 }] })}>Add</button></div>
+          <div className="subhead"><span>Apertures</span><button onClick={addAperture}>Add</button></div>
           <div className="aperture-list">
             {target.apertures.map((aperture, index) => (
               <div className="aperture-row" key={aperture.id}>
@@ -43,10 +54,11 @@ export function TargetDesigner({ target, onChange }: Props) {
                 <NumberField label="Width" value={aperture.widthDeg} unit="°" min={1} max={179} onChange={(value) => updateAperture(index, 'widthDeg', value)} />
                 <NumberField label="Centre" value={aperture.centreDeg} unit="°" min={0} max={359} onChange={(value) => updateAperture(index, 'centreDeg', value)} />
                 <NumberField label="Inner radius" value={aperture.innerRadiusMm} unit="mm" min={target.hubRadiusMm} max={target.outerDiameterMm / 2 - 1} onChange={(value) => updateAperture(index, 'innerRadiusMm', value)} />
-                <button className="icon danger" aria-label={`Remove aperture ${index + 1}`} disabled={target.apertures.length === 1} onClick={() => onChange({ ...target, apertures: target.apertures.filter((_, position) => position !== index) })}>×</button>
+                <button className="icon danger" aria-label={`Remove aperture ${index + 1}`} onClick={() => onChange({ ...target, apertures: target.apertures.filter((_, position) => position !== index) })}>×</button>
               </div>
             ))}
           </div>
+          {apertureError && <div className="warning" role="alert">{apertureError}</div>}
           <div className="readout-grid">
             <Readout label="Angular sensitivity Λ" value={`${(lambda / 1e6).toFixed(2)} × 10⁶ mm³`} />
             <Readout label="Dispersion ratio vs single aperture" value={`${(predictedDispersionRatio(SINGLE_APERTURE, target) * 100).toFixed(1)}%`} />

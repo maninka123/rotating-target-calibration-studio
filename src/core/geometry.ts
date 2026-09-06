@@ -41,7 +41,15 @@ export const centreOfMassEccentricity = (target: TargetConfig): number => {
     removed += area
   }
   const remainingArea = Math.PI * radius ** 2 - removed
-  return Math.hypot(mx, my) / remainingArea
+  const magnitude = Math.hypot(mx, my)
+  return magnitude < Math.max(1, removed) * 1e-12 ? 0 : magnitude / remainingArea
+}
+
+export const overlappingAperturePair = (apertures: Aperture[]): [number, number] | null => {
+  for (let first = 0; first < apertures.length; first += 1) for (let second = first + 1; second < apertures.length; second += 1) {
+    if (Math.abs(wrapDeg(apertures[first].centreDeg - apertures[second].centreDeg)) < (apertures[first].widthDeg + apertures[second].widthDeg) / 2 - 1e-9) return [first, second]
+  }
+  return null
 }
 
 export const minimumPlateThicknessMm = (target: TargetConfig): number => {
@@ -93,6 +101,22 @@ export const targetFitsFov = (target: TargetConfig, horizontalFovDeg: number, ve
 export const targetFitsElevationLimits = (target: TargetConfig, standOffM: number, lowerDeg: number, upperDeg: number): boolean => {
   const angularRadius = Math.atan((target.outerDiameterMm / 2000) / standOffM) / DEG
   return lowerDeg <= -angularRadius && upperDeg >= angularRadius
+}
+
+export const asymmetricCoverage = (target: TargetConfig, standOffM: number, lowerDeg: number, upperDeg: number, pitchDeg = 0): { lowerDeg: number, upperDeg: number, full: boolean, clippedFraction: number, lowerHalfClippedFraction: number, minimumStandOffM: number } => {
+  const lower = lowerDeg + pitchDeg
+  const upper = upperDeg + pitchDeg
+  const angularRadius = Math.atan((target.outerDiameterMm / 2000) / standOffM) / DEG
+  const overlap = Math.max(0, Math.min(angularRadius, upper) - Math.max(-angularRadius, lower))
+  const binding = Math.min(-lower, upper)
+  return {
+    lowerDeg: lower,
+    upperDeg: upper,
+    full: lower <= -angularRadius && upper >= angularRadius,
+    clippedFraction: 1 - overlap / (2 * angularRadius),
+    lowerHalfClippedFraction: Math.max(0, Math.min(1, (lower + angularRadius) / angularRadius)),
+    minimumStandOffM: binding > 0 ? (target.outerDiameterMm / 2000) / Math.tan(binding * DEG) * 1.1 : Number.POSITIVE_INFINITY,
+  }
 }
 
 export const removedAreaRelativeTo = (target: TargetConfig, reference: TargetConfig): number =>

@@ -1,5 +1,6 @@
 import { apertureContains, DEG, rayPlaneIntersection } from './geometry'
 import { angleAtTimeDeg, reportedTimestamp } from './timing'
+import { sensorFovDeg } from './optics'
 import type { PlacedSensor, SampleFrame, SensorDefinition, TargetConfig } from './types'
 import { APERTURE, BACKGROUND, MATERIAL } from './types'
 
@@ -7,7 +8,8 @@ const TAU = 2 * Math.PI
 
 export const channelElevationsDeg = (sensor: SensorDefinition): number[] => {
   const count = Math.max(1, Math.round(sensor.channelCount ?? 1))
-  return Array.from({ length: count }, (_, index) => count === 1 ? 0 : -sensor.verticalFovDeg / 2 + sensor.verticalFovDeg * index / (count - 1))
+  const vertical = sensorFovDeg(sensor).verticalDeg
+  return Array.from({ length: count }, (_, index) => count === 1 ? 0 : -vertical / 2 + vertical * index / (count - 1))
 }
 
 const scanSpanS = (sensor: SensorDefinition): number => {
@@ -35,7 +37,7 @@ const cameraCrop = (sensor: SensorDefinition, target: TargetConfig): CameraCrop 
 
 export const generatedRayCount = (sensor: SensorDefinition, target: TargetConfig): number => {
   if (sensor.architecture === 'rotating-head') return Math.ceil(360 / (sensor.horizontalResolutionDeg ?? 0.2)) * Math.max(1, Math.round(sensor.channelCount ?? 1))
-  if (sensor.architecture === 'single-plane') return Math.ceil(sensor.horizontalFovDeg / (sensor.horizontalResolutionDeg ?? 0.1)) + 1
+  if (sensor.architecture === 'single-plane') return Math.ceil((sensor.horizontalFovDeg ?? 0) / (sensor.horizontalResolutionDeg ?? 0.1)) + 1
   if (sensor.architecture === 'electronic-array') return Math.max(1, Math.round(sensor.gridColumns ?? 1)) * Math.max(1, Math.round(sensor.gridRows ?? 1))
   if (sensor.architecture === 'camera') { const crop = cameraCrop(sensor, target); return crop.columns * crop.rows }
   return Math.max(1, Math.round((sensor.sampleRateHz ?? 1) * scanSpanS(sensor)))
@@ -44,8 +46,8 @@ export const generatedRayCount = (sensor: SensorDefinition, target: TargetConfig
 export const samplesAcrossTarget = (sensor: SensorDefinition, target: TargetConfig): number => {
   const angularDiameterDeg = 2 * Math.atan((target.outerDiameterMm / 2000) / sensor.standOffM) / DEG
   if (sensor.architecture === 'camera') return target.outerDiameterMm / 1000 / sensor.standOffM * ((sensor.focalLengthMm ?? 1) / 1000) / ((sensor.pixelPitchUm ?? 1) * 1e-6)
-  if (sensor.architecture === 'electronic-array') return angularDiameterDeg / (sensor.horizontalFovDeg / Math.max(1, (sensor.gridColumns ?? 2) - 1))
-  return angularDiameterDeg / (sensor.horizontalResolutionDeg ?? sensor.horizontalFovDeg / Math.sqrt(generatedRayCount(sensor, target)))
+  if (sensor.architecture === 'electronic-array') return angularDiameterDeg / ((sensor.horizontalFovDeg ?? 1) / Math.max(1, (sensor.gridColumns ?? 2) - 1))
+  return angularDiameterDeg / (sensor.horizontalResolutionDeg ?? (sensor.horizontalFovDeg ?? 1) / Math.sqrt(generatedRayCount(sensor, target)))
 }
 
 export const rotatingHeadBandRingCount = (sensor: SensorDefinition, target: TargetConfig): number => {
@@ -120,15 +122,15 @@ export const generateFrame = (
       const normalizer = deflectionA + deflectionB
       const rawX = deflectionA * Math.cos(angleA) + deflectionB * Math.cos(angleB)
       const rawY = deflectionA * Math.sin(angleA) + deflectionB * Math.sin(angleB)
-      direction[0] = rawX / normalizer * Math.tan(sensor.horizontalFovDeg * DEG / 2)
-      direction[1] = rawY / normalizer * Math.tan(sensor.verticalFovDeg * DEG / 2)
+      direction[0] = rawX / normalizer * Math.tan((sensor.horizontalFovDeg ?? 0) * DEG / 2)
+      direction[1] = rawY / normalizer * Math.tan((sensor.verticalFovDeg ?? 0) * DEG / 2)
       direction[2] = 1
     } else if (sensor.architecture === 'micro-mirror') {
       const time = fraction * span
       const carrier = TAU * (sensor.mirrorEigenfrequencyHz ?? 1000) * time + acquisitionIndex * 0.37
       const ramp = 1 - Math.abs(2 * fraction - 1)
-      const horizontal = sensor.horizontalFovDeg * DEG / 2 * Math.sin(carrier)
-      const vertical = ramp * sensor.verticalFovDeg * DEG / 2 * Math.sin(carrier + Math.PI / 4)
+      const horizontal = (sensor.horizontalFovDeg ?? 0) * DEG / 2 * Math.sin(carrier)
+      const vertical = ramp * (sensor.verticalFovDeg ?? 0) * DEG / 2 * Math.sin(carrier + Math.PI / 4)
       direction[0] = Math.tan(horizontal)
       direction[1] = Math.tan(vertical)
       direction[2] = 1
@@ -137,8 +139,8 @@ export const generateFrame = (
       const rows = Math.max(1, Math.round(sensor.gridRows ?? 1))
       const column = index % columns
       const row = Math.floor(index / columns)
-      const ax = columns === 1 ? 0 : -sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * column / (columns - 1)
-      const ay = rows === 1 ? 0 : -sensor.verticalFovDeg / 2 + sensor.verticalFovDeg * row / (rows - 1)
+      const ax = columns === 1 ? 0 : -(sensor.horizontalFovDeg ?? 0) / 2 + (sensor.horizontalFovDeg ?? 0) * column / (columns - 1)
+      const ay = rows === 1 ? 0 : -(sensor.verticalFovDeg ?? 0) / 2 + (sensor.verticalFovDeg ?? 0) * row / (rows - 1)
       direction[0] = Math.tan(ax * DEG); direction[1] = Math.tan(ay * DEG); direction[2] = 1
       fraction = 0.5
     } else if (sensor.architecture === 'rotating-mirror') {
@@ -147,17 +149,18 @@ export const generateFrame = (
       const azimuthSteps = Math.ceil(total / emitters)
       const azimuthIndex = Math.floor(index / emitters)
       fraction = azimuthIndex / Math.max(1, azimuthSteps - 1)
-      const lower = sensor.elevationLowerDeg ?? -sensor.verticalFovDeg / 2
-      const upper = sensor.elevationUpperDeg ?? sensor.verticalFovDeg / 2
+      const pitch = sensor.pitchDeg ?? 0
+      const lower = (sensor.elevationLowerDeg ?? -(sensor.verticalFovDeg ?? 0) / 2) + pitch
+      const upper = (sensor.elevationUpperDeg ?? (sensor.verticalFovDeg ?? 0) / 2) + pitch
       const nonRepeatingPhase = acquisitionIndex * Math.SQRT2 + azimuthIndex * (Math.sqrt(5) - 2)
       const emitterPosition = (emitter + 0.5 + 0.45 * Math.sin(TAU * nonRepeatingPhase)) / emitters
       const elevation = lower + (upper - lower) * emitterPosition
-      const azimuth = (-sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * fraction) * DEG
+      const azimuth = (-(sensor.horizontalFovDeg ?? 0) / 2 + (sensor.horizontalFovDeg ?? 0) * fraction) * DEG
       direction[0] = Math.sin(azimuth)
       direction[1] = Math.tan(elevation * DEG) * Math.cos(azimuth)
       direction[2] = Math.cos(azimuth)
     } else if (sensor.architecture === 'single-plane') {
-      const azimuth = (-sensor.horizontalFovDeg / 2 + sensor.horizontalFovDeg * fraction) * DEG
+      const azimuth = (-(sensor.horizontalFovDeg ?? 0) / 2 + (sensor.horizontalFovDeg ?? 0) * fraction) * DEG
       direction[0] = Math.sin(azimuth); direction[1] = 0; direction[2] = Math.cos(azimuth)
     } else {
       const column = crop!.minColumn + index % crop!.columns
@@ -169,9 +172,9 @@ export const generateFrame = (
       fraction = imageHeight <= 1 ? 0 : row / (imageHeight - 1)
     }
 
-    const observation = sensor.architecture === 'camera' && sensor.shutter !== 'rolling'
-      ? acquisitionStartS + sensor.integrationTimeS / 2
-      : acquisitionStartS + (sensor.architecture === 'camera' ? sensor.integrationTimeS : 0) + span * fraction
+    const observation = sensor.architecture === 'camera'
+      ? acquisitionStartS + sensor.integrationTimeS / 2 + (sensor.shutter === 'rolling' ? sensor.readoutTimeS * fraction : 0)
+      : acquisitionStartS + span * fraction
     observationTimeS[index] = observation
     const hit = rayPlaneIntersection(direction[0], direction[1], direction[2], sensor.standOffM)
     if (!hit) { xMm[index] = Number.NaN; yMm[index] = Number.NaN; radiusMm[index] = Number.POSITIVE_INFINITY; classes[index] = BACKGROUND; continue }
@@ -184,9 +187,13 @@ export const generateFrame = (
     classes[index] = radius > outerMm ? BACKGROUND : apertureContains(target, radius, phi, rotation) ? APERTURE : MATERIAL
   }
 
-  const first = observationTimeS[0] ?? acquisitionStartS
-  const last = observationTimeS[Math.max(0, total - 1)] ?? acquisitionStartS
-  const mean = observationTimeS.reduce((sum, value) => sum + value, 0) / Math.max(1, total)
+  const first = sensor.architecture === 'camera' ? acquisitionStartS + sensor.integrationTimeS / 2 : (observationTimeS[0] ?? acquisitionStartS)
+  const last = sensor.architecture === 'camera'
+    ? first + (sensor.shutter === 'rolling' ? sensor.readoutTimeS : 0)
+    : (observationTimeS[Math.max(0, total - 1)] ?? acquisitionStartS)
+  let meanSum = 0; let meanCount = 0
+  for (let index = 0; index < total; index += 1) if (inWorkingBand[index]) { meanSum += observationTimeS[index]; meanCount += 1 }
+  const mean = meanCount ? meanSum / meanCount : (first + last) / 2
   const reported = reportedTimestamp(sensor, acquisitionStartS, first, last)
   return {
     sensorId: sensor.instanceId, architecture: sensor.architecture, acquisitionIndex, acquisitionStartS,

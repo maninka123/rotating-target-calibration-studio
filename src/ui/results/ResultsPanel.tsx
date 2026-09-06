@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EstimateResult, PlacedSensor, SampleFrame, SimulationConfig, SweepRecord } from '../../core/types'
-import type { SweepSummary } from '../../core/sweep'
+import type { PairwiseOffset, SweepSummary } from '../../core/sweep'
 import { Panel } from '../shared/Panel'
 import { drawCost, drawSamples } from '../shared/plots'
 import { parseConfiguration, serialiseConfiguration } from '../../core/config'
 import { SweepReviewDialog } from './SweepReviewDialog'
-import { downloadSweepPackage, saveSweepFolder, sweepFolderName, sweepRecordsCsv } from './sweepFiles'
+import { downloadSweepPackage, saveSweepFolder, sweepRecordsCsv } from './sweepFiles'
 
 interface Props {
   playing: boolean
@@ -17,7 +17,8 @@ interface Props {
   sweepProgress: number
   sweepRecords: SweepRecord[]
   sweepSummaries: SweepSummary[]
-  onSweep: (count: number, estimators: ('contour' | 'geometric')[]) => Promise<{ records: SweepRecord[], summaries: SweepSummary[] }>
+  pairwiseOffsets: PairwiseOffset[]
+  onSweep: (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number }) => Promise<{ records: SweepRecord[], summaries: SweepSummary[] }>
   onImport: (config: SimulationConfig) => void
   onSearchResolution: (value: number) => void
 }
@@ -27,22 +28,25 @@ export function ResultsPanel(props: Props) {
   const [geometric, setGeometric] = useState(true)
   const [count, setCount] = useState(300)
   const [reviewOpen, setReviewOpen] = useState(false)
-  const [pendingFolder, setPendingFolder] = useState('')
   const [saveStatus, setSaveStatus] = useState('')
+  const [activeSweep, setActiveSweep] = useState({ rpm: props.config.rpm, rotations: 1, intermediate: true, total: count })
   const sweepTrigger = useRef<HTMLButtonElement>(null)
   const selected = (): ('contour' | 'geometric')[] => [...(contour ? ['contour' as const] : []), ...(geometric ? ['geometric' as const] : [])]
   const closeReview = () => { setReviewOpen(false); requestAnimationFrame(() => sweepTrigger.current?.focus()) }
-  const openReview = () => { setPendingFolder(sweepFolderName(props.config)); setSaveStatus(''); setReviewOpen(true) }
-  const confirmSweep = async (directory: FileSystemDirectoryHandle | null) => {
+  const openReview = () => { setSaveStatus(''); setReviewOpen(true) }
+  const confirmSweep = async (directory: FileSystemDirectoryHandle | null, options: { rpm: number, rotations: number, intermediate: boolean }, folderName: string) => {
     setReviewOpen(false)
+    const total = count * options.rotations
+    setActiveSweep({ ...options, total })
     try {
-      const result = await props.onSweep(count, selected())
+      const result = await props.onSweep(total, selected(), options)
+      const runConfig = { ...props.config, rpm: options.rpm }
       if (directory) {
-        await saveSweepFolder(directory, pendingFolder, props.config, result.records, result.summaries)
-        setSaveStatus(`Saved to ${directory.name}/${pendingFolder}`)
+        await saveSweepFolder(directory, folderName, runConfig, result.records, result.summaries)
+        setSaveStatus(`Saved to ${directory.name}/${folderName}`)
       } else {
-        downloadSweepPackage(pendingFolder, props.config, result.records, result.summaries)
-        setSaveStatus(`Downloaded ${pendingFolder}.json`)
+        downloadSweepPackage(folderName, runConfig, result.records, result.summaries)
+        setSaveStatus(`Downloaded ${folderName}.json`)
       }
     } catch (error) {
       setSaveStatus(`Sweep output was not saved: ${error instanceof Error ? error.message : String(error)}`)
@@ -68,17 +72,17 @@ export function ResultsPanel(props: Props) {
         <div className="subhead"><span>Sweep mode</span><small>Runs in a Web Worker without rendering frames</small></div>
         <p className="sweep-explanation">Repeats acquisitions across a full target revolution, then reports angle-error statistics, rejected frames, error plots and cross-sensor timing offsets.</p>
         <div className="sweep-controls"><label>Acquisitions <input type="number" min="10" max="2000" value={count} onChange={(event) => setCount(Number(event.target.value))} /></label><button ref={sweepTrigger} disabled={props.busy || selected().length === 0} onClick={openReview}>Run sweep</button></div>
-        {props.sweepProgress > 0 && props.sweepProgress < 1 && <SweepProgress fraction={props.sweepProgress} total={count} />}
+        {props.sweepProgress > 0 && props.sweepProgress < 1 && <SweepProgress fraction={props.sweepProgress} total={activeSweep.total} rpm={activeSweep.rpm} rotations={activeSweep.rotations} detailed={activeSweep.intermediate} />}
         {saveStatus && <p className="sweep-save-status" role="status">{saveStatus}</p>}
-        {props.sweepSummaries.length > 0 && <SweepResults summaries={props.sweepSummaries} records={props.sweepRecords} />}
+        {props.sweepSummaries.length > 0 && <SweepResults summaries={props.sweepSummaries} offsets={props.pairwiseOffsets} records={props.sweepRecords} />}
       </div>
       <ExportBar config={props.config} records={props.sweepRecords} onImport={props.onImport} />
-      {reviewOpen && <SweepReviewDialog config={props.config} acquisitions={count} estimators={selected()} folderName={pendingFolder} onCancel={closeReview} onConfirm={confirmSweep} />}
+      {reviewOpen && <SweepReviewDialog config={props.config} acquisitions={count} estimators={selected()} onCancel={closeReview} onConfirm={confirmSweep} />}
     </Panel>
   )
 }
 
-function SweepProgress({ fraction, total }: { fraction: number, total: number }) {
+function SweepProgress({ fraction, total, rpm, rotations, detailed }: { fraction: number, total: number, rpm: number, rotations: number, detailed: boolean }) {
   const completed = Math.min(total, Math.floor(total * fraction))
   const percentage = Math.round(fraction * 100)
   return (
@@ -88,7 +92,7 @@ function SweepProgress({ fraction, total }: { fraction: number, total: number })
         <circle className="sweep-wheel-hub" cx="22" cy="22" r="5" />
         <path d="M22 4v13M40 22H27M22 40V27" />
       </svg>
-      <div className="sweep-progress-copy"><strong>Running sweep</strong><span>{percentage}% · {completed} of {total} acquisitions</span></div>
+      <div className="sweep-progress-copy"><strong>Running sweep</strong><span>{percentage}% · {completed} of {total} acquisitions{detailed ? ` · rotation ${(fraction * rotations).toFixed(2)} / ${rotations} · ${rpm.toFixed(1)} rpm` : ''}</span></div>
       <div className="progress"><span style={{ width: `${fraction * 100}%` }} /></div>
     </div>
   )
@@ -107,11 +111,11 @@ function EstimateGroup({ sensor, frame, results, config }: { sensor: PlacedSenso
   }
   return (
     <article className="estimate-card">
-      <header><div><strong>{sensor.name}</strong><small>Actual and recovered target templates</small></div></header>
-      <div className="estimate-table"><table><thead><tr><th>Estimator</th><th>Status</th><th>Recovered</th><th>True</th><th>Angle error</th><th>Time equivalent</th><th>Uncertainty</th></tr></thead><tbody>{results.map((result) => <tr key={result.estimator}><td>{result.estimator === 'geometric' ? 'Geometric boundary fit' : 'Contour matching'}</td><td><span className={result.accepted ? 'status accepted' : 'status rejected'}>{result.accepted ? 'Accepted' : 'Rejected'}</span></td>{result.accepted ? <><td>{result.angleDeg?.toFixed(3)}°</td><td>{result.trueAngleDeg.toFixed(3)}°</td><td><strong>{result.signedErrorDeg?.toFixed(3)}°</strong></td><td>{result.timingErrorS === null ? 'undefined at 0 rpm' : `${((result.timingErrorS ?? 0) * 1000).toFixed(2)} ms`}</td><td>{result.estimator === 'geometric' ? `${result.uncertaintyDeg?.toExponential(2)}°` : '—'}</td></> : <td colSpan={5} className="rejection-cell">{result.reason}</td>}</tr>)}</tbody></table></div>
+      <header><div><strong>{sensor.name}</strong><small>Truth and recovered target templates</small></div></header>
+      <div className="estimate-table"><table><thead><tr><th>Estimator</th><th>Status</th><th>Recovered</th><th>True</th><th>Angle error</th><th>Time equivalent</th><th>Local curvature proxy</th></tr></thead><tbody>{results.map((result) => <tr key={result.estimator}><td>{result.estimator === 'geometric' ? 'Geometric boundary fit' : 'Contour matching'}</td><td><span className={result.accepted ? 'status accepted' : 'status rejected'}>{result.accepted ? 'Accepted' : 'Rejected'}</span></td>{result.accepted ? <><td>{result.angleDeg?.toFixed(3)}°</td><td>{result.trueAngleDeg.toFixed(3)}°</td><td><strong>{result.signedErrorDeg?.toFixed(3)}°</strong></td><td>{result.timingErrorS === null ? 'undefined at 0 rpm' : `${((result.timingErrorS ?? 0) * 1000).toFixed(2)} ms`}</td><td>{result.estimator === 'geometric' ? result.localCurvatureProxy?.toExponential(2) : '—'}</td></> : <td colSpan={5} className="rejection-cell">{result.reason}{result.ambiguityOrder ? ` (symmetry order ${result.ambiguityOrder})` : ''}</td>}</tr>)}</tbody></table></div>
       <canvas className="estimate-plot" ref={plot} />
       <div className="cost-grid">{results.filter((result) => result.costs).map((result) => <CostPlot key={result.estimator} result={result} />)}</div>
-      {results.some((result) => result.estimator === 'geometric') && <p className="method-note">Curvature uncertainty approaches numerical zero for dense regular sampling and is not meaningful in that regime.</p>}
+      {results.some((result) => result.estimator === 'geometric') && <p className="method-note">The local curvature proxy approaches numerical zero for dense regular sampling and is not a statistical uncertainty.</p>}
       <button className="text-button" onClick={exportPng}>Export this figure as PNG</button>
     </article>
   )
@@ -123,13 +127,34 @@ function CostPlot({ result }: { result: EstimateResult }) {
   return <div><small className="plot-label">{result.estimator === 'geometric' ? 'Geometric' : 'Contour'} cost over orientation</small><canvas className="cost-plot" ref={cost} /></div>
 }
 
-function SweepResults({ summaries, records }: { summaries: SweepSummary[], records: SweepRecord[] }) {
+function SweepResults({ summaries, offsets, records }: { summaries: SweepSummary[], offsets: PairwiseOffset[], records: SweepRecord[] }) {
   return (
     <>
-      <div className="table-wrap"><table><thead><tr><th>Sensor</th><th>Estimator</th><th>MAE</th><th>Median</th><th>SD</th><th>P95</th><th>Rejected</th><th>Relative offset</th></tr></thead><tbody>{summaries.map((row) => <tr key={`${row.sensor}-${row.estimator}`}><td>{row.sensor.slice(0, 8)}</td><td>{row.estimator}</td><td>{row.maeDeg?.toFixed(3) ?? '—'}°</td><td>{row.medianAbsDeg?.toFixed(3) ?? '—'}°</td><td>{row.sdDeg?.toFixed(3) ?? '—'}°</td><td>{row.p95Deg?.toFixed(3) ?? '—'}°</td><td>{(row.rejectionRate * 100).toFixed(1)}%</td><td>{row.recoveredOffsetMs?.toFixed(1) ?? '—'} ms</td></tr>)}</tbody></table></div>
+      <div className="table-wrap"><table><thead><tr><th>Sensor</th><th>Estimator</th><th>MAE</th><th>Median</th><th>SD</th><th>P95</th><th>Rejected</th></tr></thead><tbody>{summaries.map((row) => <tr key={`${row.sensor}-${row.estimator}`}><td>{row.sensor.slice(0, 8)}</td><td>{row.estimator}</td><td>{row.maeDeg?.toFixed(3) ?? '—'}°</td><td>{row.medianAbsDeg?.toFixed(3) ?? '—'}°</td><td>{row.sdDeg?.toFixed(3) ?? '—'}°</td><td>{row.p95Deg?.toFixed(3) ?? '—'}°</td><td>{(row.rejectionRate * 100).toFixed(1)}%</td></tr>)}</tbody></table></div>
+      {offsets.length > 0 && <div className="table-wrap"><table><thead><tr><th>Sensor pair</th><th>Estimator</th><th>Relative offset</th><th>Offset SD</th></tr></thead><tbody>{offsets.map((row) => <tr key={`${row.fromSensor}-${row.toSensor}-${row.estimator}`}><td>{row.fromSensor.slice(0, 8)} → {row.toSensor.slice(0, 8)}</td><td>{row.estimator}</td><td>{row.recoveredOffsetMs?.toFixed(1) ?? '—'} ms</td><td>{row.recoveredOffsetSdMs?.toFixed(1) ?? '—'} ms</td></tr>)}</tbody></table></div>}
       <SweepPlot records={records} />
+      <div className="sweep-chart-grid"><ErrorHistogram records={records} /><SensorTimingPlot records={records} /></div>
     </>
   )
+}
+
+function ErrorHistogram({ records }: { records: SweepRecord[] }) {
+  const values = records.flatMap((row) => row.accepted && row.errorDeg !== null ? [row.errorDeg] : [])
+  if (!values.length) return null
+  const limit = Math.max(1, ...values.map(Math.abs))
+  const bins = new Uint32Array(21)
+  for (const value of values) bins[Math.min(20, Math.floor((value + limit) / (2 * limit) * 21))] += 1
+  const peak = Math.max(...bins)
+  return <figure><figcaption>Signed error distribution</figcaption><svg className="summary-plot" viewBox="0 0 360 150" role="img" aria-label="Signed error histogram">{Array.from(bins, (count, index) => { const height = count / peak * 110; return <rect key={index} x={24 + index * 15} y={125 - height} width="12" height={height} fill="#176b75" opacity=".75"/> })}<line x1="181.5" x2="181.5" y1="10" y2="128" stroke="#b84f45" strokeWidth="2"/><text x="24" y="144">−{limit.toFixed(1)}°</text><text x="174" y="144">0°</text><text x="318" y="144">+{limit.toFixed(1)}°</text></svg></figure>
+}
+
+function SensorTimingPlot({ records }: { records: SweepRecord[] }) {
+  const sensors = [...new Set(records.map((row) => row.sensor))]
+  const series = sensors.map((sensor) => records.filter((row) => row.sensor === sensor).map((row) => (row.meanObservationTimeS - row.reportedTimeS) * 1000))
+  const means = series.map((values) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length))
+  const limit = Math.max(1, ...means.map(Math.abs))
+  const colours = ['#176b75', '#d58b49', '#8d78a8']
+  return <figure><figcaption>Mean observation − reported time</figcaption><svg className="summary-plot" viewBox="0 0 360 150" role="img" aria-label="Sensor observation time offsets"><line x1="30" x2="345" y1="75" y2="75" stroke="#89969a"/>{means.map((mean, index) => { const height = Math.abs(mean) / limit * 52; const y = mean >= 0 ? 75 - height : 75; return <g key={sensors[index]}><rect x={52 + index * 96} y={y} width="52" height={height} fill={colours[index]}/><text x={78 + index * 96} y="136" textAnchor="middle">S{index + 1}</text><text x={78 + index * 96} y={mean >= 0 ? y - 5 : y + height + 12} textAnchor="middle">{mean.toFixed(1)} ms</text></g>})}</svg></figure>
 }
 
 function SweepPlot({ records }: { records: SweepRecord[] }) {

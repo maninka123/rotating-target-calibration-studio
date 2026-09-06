@@ -14,12 +14,12 @@ export const SENSOR_LIBRARY: SensorDefinition[] = [
   { ...defaults, id: 'livox-tele15', name: 'Livox Tele-15', architecture: 'prism', standOffM: 1.82, horizontalFovDeg: 14.5, verticalFovDeg: 16.2, prismRateAHz: 75.7, prismRateBHz: -109.9, wedgeADeg: 3, wedgeBDeg: 3.5, sampleRateHz: 240000, scanMode: 'Non-repetitive rosette mode' },
   { ...defaults, id: 'blickfeld-cube1', name: 'Blickfeld Cube 1', architecture: 'micro-mirror', standOffM: 1, horizontalFovDeg: 70, verticalFovDeg: 30, sampleRateHz: 97000, scanLinesPerFrame: 200, mirrorEigenfrequencyHz: 1000 },
   { ...defaults, id: 'hesai-ft120', name: 'Hesai FT120', architecture: 'electronic-array', standOffM: 1, horizontalFovDeg: 100, verticalFovDeg: 75, gridColumns: 120, gridRows: 90 },
-  { ...defaults, id: 'livox-mid360', name: 'Livox Mid-360', architecture: 'rotating-mirror', standOffM: 1, horizontalFovDeg: 360, verticalFovDeg: 59, elevationLowerDeg: -7, elevationUpperDeg: 52, sampleRateHz: 200000, emitterCount: 16, headRateHz: 10, scanMode: 'Hybrid rotating-mirror non-repetitive mode' },
+  { ...defaults, id: 'livox-mid360', name: 'Livox Mid-360', architecture: 'rotating-mirror', standOffM: 1, horizontalFovDeg: 360, verticalFovDeg: 59, elevationLowerDeg: -7, elevationUpperDeg: 52, pitchDeg: 0, sampleRateHz: 200000, emitterCount: 16, headRateHz: 10, scanMode: 'Hybrid rotating-mirror non-repetitive mode' },
   { ...defaults, id: 'single-plane', name: 'Single-plane scanner', architecture: 'single-plane', standOffM: 1, horizontalFovDeg: 120, verticalFovDeg: 30, horizontalResolutionDeg: 0.1, headRateHz: 10 },
-  { ...defaults, id: 'flir-global', name: 'FLIR Blackfly S', architecture: 'camera', standOffM: 1, horizontalFovDeg: 94.9, verticalFovDeg: 79, resolution: [1936, 1464], focalLengthMm: 4, pixelPitchUm: 4.5, shutter: 'global', spectralBand: 'visible', timestampConvention: 'exposure-midpoint', integrationTimeS: 0.006 },
-  { ...defaults, id: 'flir-rolling', name: 'FLIR Blackfly S — 20 ms rolling', architecture: 'camera', standOffM: 1, horizontalFovDeg: 94.9, verticalFovDeg: 79, resolution: [1936, 1464], focalLengthMm: 4, pixelPitchUm: 4.5, shutter: 'rolling', spectralBand: 'visible', timestampConvention: 'rolling-readout', integrationTimeS: 0.005 },
-  { ...defaults, id: 'thermal-640', name: 'Thermal 640 × 512', architecture: 'camera', standOffM: 1, horizontalFovDeg: 45, verticalFovDeg: 36.9, resolution: [640, 512], focalLengthMm: 7.46, pixelPitchUm: 12, shutter: 'global', spectralBand: '8–14 µm, ΔT ≈ 5 K', timestampConvention: 'exposure-midpoint', integrationTimeS: 0.01 },
-  { ...defaults, id: 'nir-905', name: 'Near-infrared 905 nm', architecture: 'camera', standOffM: 1, horizontalFovDeg: 50, verticalFovDeg: 40, resolution: [1280, 1024], focalLengthMm: 7.46, pixelPitchUm: 6, shutter: 'global', spectralBand: '905 nm reflected intensity', timestampConvention: 'exposure-midpoint', integrationTimeS: 0.006 },
+  { ...defaults, id: 'flir-global', name: 'FLIR Blackfly S', architecture: 'camera', standOffM: 1, resolution: [1936, 1464], focalLengthMm: 4, pixelPitchUm: 4.5, shutter: 'global', spectralBand: 'visible', timestampConvention: 'exposure-midpoint', integrationTimeS: 0.006 },
+  { ...defaults, id: 'flir-rolling', name: 'FLIR Blackfly S — 20 ms rolling', architecture: 'camera', standOffM: 1, resolution: [1936, 1464], focalLengthMm: 4, pixelPitchUm: 4.5, shutter: 'rolling', spectralBand: 'visible', timestampConvention: 'rolling-readout', integrationTimeS: 0.005 },
+  { ...defaults, id: 'thermal-640', name: 'Thermal 640 × 512', architecture: 'camera', standOffM: 1, resolution: [640, 512], focalLengthMm: 7.46, pixelPitchUm: 12, shutter: 'global', spectralBand: '8–14 µm, ΔT ≈ 5 K', timestampConvention: 'exposure-midpoint', integrationTimeS: 0.01 },
+  { ...defaults, id: 'nir-905', name: 'Near-infrared 905 nm', architecture: 'camera', standOffM: 1, resolution: [1280, 1024], focalLengthMm: 7.46, pixelPitchUm: 6, shutter: 'global', spectralBand: '905 nm reflected intensity', timestampConvention: 'exposure-midpoint', integrationTimeS: 0.006 },
 ]
 
 export const byId = (id: string): SensorDefinition => {
@@ -40,8 +40,8 @@ export const customSensorErrors = (sensor: SensorDefinition): string[] => {
   const errors: string[] = []
   if (!sensor.name.trim()) errors.push('Name is required')
   if (!(sensor.standOffM > 0)) errors.push('Stand-off must be positive')
-  if (!(sensor.horizontalFovDeg > 0 && sensor.horizontalFovDeg <= 360)) errors.push('Horizontal FOV must be in (0, 360]')
-  if (!(sensor.verticalFovDeg > 0 && sensor.verticalFovDeg < 180)) errors.push('Vertical FOV must be in (0, 180)')
+  if (sensor.architecture !== 'camera' && !((sensor.horizontalFovDeg ?? 0) > 0 && (sensor.horizontalFovDeg ?? 0) <= 360)) errors.push('Horizontal FOV must be in (0, 360]')
+  if (sensor.architecture !== 'camera' && !((sensor.verticalFovDeg ?? 0) > 0 && (sensor.verticalFovDeg ?? 0) < 180)) errors.push('Vertical FOV must be in (0, 180)')
   if (sensor.architecture === 'camera' && (!sensor.resolution || sensor.resolution.some((v) => v < 32) || !sensor.focalLengthMm || !sensor.pixelPitchUm)) errors.push('Camera optics and resolution are required')
   if (sensor.architecture === 'rotating-head' && (!sensor.channelCount || sensor.channelCount < 1)) errors.push('Channel count must be positive')
   if (sensor.architecture === 'micro-mirror' && (!(sensor.scanLinesPerFrame && sensor.scanLinesPerFrame > 0) || !(sensor.mirrorEigenfrequencyHz && sensor.mirrorEigenfrequencyHz > 0))) errors.push('Scan lines and mirror eigenfrequency must be positive')

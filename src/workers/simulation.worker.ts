@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { contourEstimate, geometricEstimate } from '../core/estimators'
+import { estimatorInputFromFrame, evaluateEstimate } from '../core/estimation'
 import { generateFrame } from '../core/sampling'
 import { runSweep } from '../core/sweep'
 import type { PlacedSensor, TargetConfig } from '../core/types'
@@ -7,7 +8,7 @@ import type { PlacedSensor, TargetConfig } from '../core/types'
 type Request =
   | { id: number, type: 'frame', sensor: PlacedSensor, target: TargetConfig, rpm: number, angleDeg: number, startS: number, acquisitionIndex: number }
   | { id: number, type: 'estimate', sensor: PlacedSensor, target: TargetConfig, rpm: number, angleDeg: number, startS: number, acquisitionIndex: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
-  | { id: number, type: 'sweep', sensors: PlacedSensor[], target: TargetConfig, rpm: number, acquisitions: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
+  | { id: number, type: 'sweep', sensors: PlacedSensor[], target: TargetConfig, rpm: number, rotations: number, acquisitions: number, estimators: ('contour' | 'geometric')[], searchResolutionDeg: number }
 
 self.onmessage = (event: MessageEvent<Request>) => {
   const request = event.data
@@ -19,9 +20,10 @@ self.onmessage = (event: MessageEvent<Request>) => {
     }
     if (request.type === 'estimate') {
       const frame = generateFrame(request.sensor, request.target, request.rpm, request.angleDeg, request.startS, request.acquisitionIndex)
-      const results = request.estimators.map((estimator) => estimator === 'contour'
-        ? contourEstimate(frame, request.target, request.sensor, request.rpm)
-        : geometricEstimate(frame, request.target, request.rpm, request.searchResolutionDeg))
+      const input = estimatorInputFromFrame(frame, request.target, request.searchResolutionDeg)
+      const results = request.estimators.map((estimator) => evaluateEstimate(
+        estimator === 'contour' ? contourEstimate(input) : geometricEstimate(input), frame.trueAngleAtReportedDeg, request.rpm,
+      ))
       self.postMessage({ id: request.id, type: 'estimate', frame, results })
       return
     }
@@ -33,6 +35,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
       request.estimators,
       request.searchResolutionDeg,
       (fraction) => self.postMessage({ id: request.id, type: 'progress', fraction }),
+      request.rotations,
     )
     self.postMessage({ id: request.id, type: 'sweep', ...result })
   } catch (error) {

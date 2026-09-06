@@ -30,6 +30,11 @@ describe('target geometry validation', () => {
     expect(minimumPlateThicknessMm(DUAL_APERTURE)).toBeCloseTo(2.73, 2)
     expect(bendingStressMpa(160, 3)).toBeCloseTo(0.68, 2)
   })
+
+  it('returns exactly zero eccentricity for three equal 120 degree apertures', () => {
+    const symmetric = { ...TRIPLE_APERTURE, apertures: [0, 120, 240].map((centreDeg, index) => ({ id: String(index), centreDeg, widthDeg: 25, innerRadiusMm: 100 })) }
+    expect(centreOfMassEccentricity(symmetric)).toBe(0)
+  })
 })
 
 describe('field of view validation', () => {

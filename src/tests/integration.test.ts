@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseConfiguration, parseCustomSensors, serialiseConfiguration, serialiseCustomSensors } from '../core/config'
 import { contourEstimate, geometricEstimate } from '../core/estimators'
+import { estimatorInputFromFrame } from '../core/estimation'
 import { DUAL_APERTURE } from '../core/presets'
 import { generateFrame } from '../core/sampling'
 import { SCENARIO_NAMES, scenarioConfiguration } from '../core/scenarios'
@@ -22,8 +23,9 @@ describe('cross-architecture operation', () => {
   it.each(Object.keys(representatives) as Architecture[])('both estimators run on %s without throwing', (architecture) => {
     const sensor = lightweight(architecture)
     const frame = generateFrame(sensor, DUAL_APERTURE, 5, 33, 0, 2)
-    expect(() => contourEstimate(frame, DUAL_APERTURE, sensor, 5)).not.toThrow()
-    expect(() => geometricEstimate(frame, DUAL_APERTURE, 5, 2)).not.toThrow()
+    const input = estimatorInputFromFrame(frame, DUAL_APERTURE, 2)
+    expect(() => contourEstimate(input)).not.toThrow()
+    expect(() => geometricEstimate(input)).not.toThrow()
   })
 
   it('contains no stored nominal sample-count property', () => {
@@ -37,11 +39,14 @@ describe('cross-architecture operation', () => {
 })
 
 describe('timestamps and persistence', () => {
-  it('all timestamp conventions report distinct times for one rolling frame geometry', () => {
+  it('timestamp conventions report their explicitly defined instants', () => {
     const base = placed('flir-rolling', { resolution: [200, 160], pixelPitchUm: 20 })
     const conventions: TimestampConvention[] = ['instantaneous', 'window-start', 'exposure-midpoint', 'rolling-readout']
     const values = conventions.map((timestampConvention) => generateFrame({ ...base, timestampConvention }, DUAL_APERTURE, 0, 0, 10).reportedTimeS)
-    expect(new Set(values).size).toBe(4)
+    expect(values[0]).toBeCloseTo(10.0025, 8)
+    expect(values[1]).toBe(10)
+    expect(values[2]).toBeCloseTo(10.0125, 8)
+    expect(values[3]).toBe(10)
   })
 
   it('custom sensor serialisation restores identical ray output', () => {
@@ -56,6 +61,30 @@ describe('timestamps and persistence', () => {
   it('configuration JSON round-trip restores identical state', () => {
     const config = scenarioConfiguration('Rolling shutter at rate')
     expect(parseConfiguration(serialiseConfiguration(config))).toEqual(config)
+  })
+
+  it('round-trips asymmetric sensor pitch through configuration JSON', () => {
+    const config = scenarioConfiguration('Dense camera')
+    config.sensors = [placed('livox-mid360', { pitchDeg: -22.5 })]
+    expect(parseConfiguration(serialiseConfiguration(config)).sensors[0].pitchDeg).toBe(-22.5)
+  })
+
+  it.each([
+    ['rpm', (config: ReturnType<typeof scenarioConfiguration>) => { config.rpm = 21 }],
+    ['stand-off', (config: ReturnType<typeof scenarioConfiguration>) => { config.sensors[0].standOffM = 0 }],
+    ['aperture width', (config: ReturnType<typeof scenarioConfiguration>) => { config.target.apertures[0].widthDeg = 180 }],
+    ['camera focal length', (config: ReturnType<typeof scenarioConfiguration>) => { config.sensors = [placed('flir-global', { focalLengthMm: 0 })] }],
+    ['timestamp convention', (config: ReturnType<typeof scenarioConfiguration>) => { config.sensors[0].timestampConvention = 'bad' as TimestampConvention }],
+  ])('rejects invalid imported %s', (_, mutate) => {
+    const config = scenarioConfiguration('Dense camera')
+    mutate(config)
+    expect(() => parseConfiguration(JSON.stringify(config))).toThrow()
+  })
+
+  it('rejects overlapping apertures on import', () => {
+    const config = scenarioConfiguration('Dense camera')
+    config.target.apertures[1].centreDeg = 10
+    expect(() => parseConfiguration(JSON.stringify(config))).toThrow(/overlap/)
   })
 })
 
@@ -96,12 +125,12 @@ const boundaryFrame = (count: number, apertureSamples: number): SampleFrame => {
 
 describe('acceptance boundaries', () => {
   it('rejects 49 working-band samples but evaluates exactly 50', () => {
-    expect(geometricEstimate(boundaryFrame(49, 3), DUAL_APERTURE, 0).reason).toBe('fewer than 50 samples in working band')
-    expect(geometricEstimate(boundaryFrame(50, 3), DUAL_APERTURE, 0).reason).not.toBe('fewer than 50 samples in working band')
+    expect(geometricEstimate(estimatorInputFromFrame(boundaryFrame(49, 3), DUAL_APERTURE, 1)).reason).toBe('fewer than 50 samples in working band')
+    expect(geometricEstimate(estimatorInputFromFrame(boundaryFrame(50, 3), DUAL_APERTURE, 1)).reason).not.toBe('fewer than 50 samples in working band')
   })
 
   it('rejects two aperture samples but evaluates exactly three', () => {
-    expect(geometricEstimate(boundaryFrame(50, 2), DUAL_APERTURE, 0).reason).toBe('fewer than 3 samples in each class')
-    expect(geometricEstimate(boundaryFrame(50, 3), DUAL_APERTURE, 0).reason).not.toBe('fewer than 3 samples in each class')
+    expect(geometricEstimate(estimatorInputFromFrame(boundaryFrame(50, 2), DUAL_APERTURE, 1)).reason).toBe('fewer than 3 samples in each class')
+    expect(geometricEstimate(estimatorInputFromFrame(boundaryFrame(50, 3), DUAL_APERTURE, 1)).reason).not.toBe('fewer than 3 samples in each class')
   })
 })
