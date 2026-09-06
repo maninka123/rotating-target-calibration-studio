@@ -13,12 +13,6 @@ optimistic bound, not measured hardware performance.
 
 ![Animated 3D simulation demonstration](docs/simulator-demo.gif)
 
-![Face-on rotation view](docs/rotation-view.png)
-
-![Estimation overlay](docs/estimation-overlay.png)
-
-![Sweep results](docs/sweep-results.png)
-
 ## Quick start
 
 Requires Node.js 20.19+ or 22+.
@@ -45,7 +39,7 @@ npm run preview
 - Live single-, dual- and triple-aperture target editing with sensitivity, removed area, centre-of-mass and plate checks.
 - Seven shared sensor architectures and seventeen built-ins.
 - One to three sensors with independent stand-off and timestamp conventions.
-- A Three.js scene with rim-connected aperture cut-outs, adjustable translucent sensor fields of view, distance annotations, orbit controls and optional rays.
+- A Three.js scene with rim-connected through-holes, adjustable translucent sensor fields of view, distance annotations, orbit controls and optional rays.
 - Typed-array sample frames generated and estimated in a Web Worker.
 - Frozen-frame contour and geometric estimation grouped once per sensor, with thick actual/recovered templates, angle-error tables and cost curves.
 - Batch sweeps, error statistics, signed-error plots, cross-sensor time-offset recovery and CSV export.
@@ -53,6 +47,8 @@ npm run preview
 - Six one-click teaching and validation scenarios.
 
 Sweep mode repeats the selected sensor acquisitions across one full target revolution without animating every frame. It summarises angle accuracy, estimator rejections and relative timing offsets, making systematic behaviour easier to see than in a single paused frame.
+
+![Face-on rotation view](docs/rotation-view.png)
 
 ## Preset scenarios
 
@@ -79,7 +75,7 @@ Angular sensitivity is
 Λ = Σ 2(R³ − ρₖ³) / 3
 ```
 
-where each annular-sector aperture contributes two radial boundaries. Predicted dispersion follows `SD ∝ Λ⁻¹ᐟ²`.
+where each annular-sector aperture contributes two radial boundaries. Angular dispersion scales as `SD ∝ Λ⁻¹ᐟ²`.
 
 Sector area is `α(R² − ρ²)/2`. Removed-sector centroid radius is
 
@@ -90,6 +86,12 @@ r̄ = (2/3) (R³ − ρ³)/(R² − ρ²) · sin(α/2)/(α/2)
 and remaining-plate eccentricity follows from removed-area moments. Plate checks use aluminium density 2700 kg/m³, `E = 70 GPa`, gravity 9.81 m/s² and a 0.05 mm deflection limit.
 
 The geometric boundary-fit estimator performs a configurable-resolution global 0–360° class-agreement search, applies a clipped boundary tolerance, then refines the best interval by golden-section search. The default coarse search step is 1°.
+
+![Estimation overlay](docs/estimation-overlay.png)
+
+Sweep results collect the accuracy and rejection behaviour across a complete revolution.
+
+![Sweep results](docs/sweep-results.png)
 
 ## Licence
 
