@@ -90,6 +90,7 @@ test('all panels render, rotation runs, and both estimators return output', asyn
   const angleBeforeSweep = await sweepAngle.inputValue()
   await review.getByRole('button', { name: 'Start and save sweep' }).click()
   await expect(page.locator('.sweep-progress-status')).toContainText(/\d+ of 300 acquisitions/)
+  await expect(page.getByRole('button', { name: 'Stop sweep' })).toBeVisible()
   await page.waitForTimeout(700)
   expect(await sweepAngle.inputValue()).not.toBe(angleBeforeSweep)
   await expect(page.locator('.table-wrap')).toBeVisible({ timeout: 45_000 })
@@ -103,6 +104,34 @@ test('all panels render, rotation runs, and both estimators return output', asyn
   await expect(page.locator('.table-wrap').first()).toContainText('S1 · Velodyne Puck Hi-Res')
   await page.locator('.sweep-block').screenshot({ path: 'docs/sweep-results.png' })
   expect(errors).toEqual([])
+})
+
+test('stopping after one-third of a sweep keeps and displays partial results', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.addInitScript(() => {
+    const folder = {
+      getDirectoryHandle: async () => folder,
+      getFileHandle: async () => ({ createWritable: async () => ({ write: async () => undefined, close: async () => undefined }) }),
+    }
+    Object.assign(window, { showDirectoryPicker: async () => ({ ...folder, kind: 'directory', name: 'Selected parent' }) })
+    localStorage.setItem('rotating-target-studio-notice-dismissed', 'true')
+  })
+  await page.goto('/rotating-target-calibration-studio/')
+  await page.getByRole('button', { name: 'Aperture ablation' }).click()
+  await page.getByLabel('Geometric boundary fit').uncheck()
+  await page.getByLabel('Acquisitions').fill('2000')
+  await page.getByRole('button', { name: 'Run sweep' }).click()
+  const review = page.getByRole('dialog', { name: 'Run acquisition sweep?' })
+  await review.getByLabel('Save intermediate acquisition checkpoints').uncheck()
+  await review.getByRole('button', { name: 'Choose parent folder' }).click()
+  await review.getByRole('button', { name: 'Start and save sweep' }).click()
+  const stop = page.getByRole('button', { name: 'Stop sweep' })
+  await expect(stop).toBeVisible()
+  await expect.poll(async () => Number((await page.locator('.sweep-progress-status').getAttribute('aria-label'))?.match(/\d+/)?.[0] ?? 0), { timeout: 60_000 }).toBeGreaterThanOrEqual(35)
+  await stop.click()
+  await expect(page.locator('.sweep-save-status')).toContainText('Partial results', { timeout: 15_000 })
+  await expect(page.locator('.sweep-block .table-wrap').first()).toContainText('Velodyne Puck Hi-Res')
+  await expect(page.locator('.sweep-plot')).toBeVisible()
 })
 
 test('target edits update both 3D views and keep hub radii consistent', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EstimateResult, PlacedSensor, SampleFrame, SimulationConfig, SweepRecord } from '../../core/types'
-import type { PairwiseOffset, SweepSummary, SweepVisualSnapshot } from '../../core/sweep'
+import { completedSweepAcquisitions, hasRepresentativePartialSweep, summariseSweepRecords, type PairwiseOffset, type SweepSummary, type SweepVisualSnapshot } from '../../core/sweep'
 import { Panel } from '../shared/Panel'
 import { NumberField } from '../shared/NumberField'
 import { drawCost, drawSamples } from '../shared/plots'
@@ -20,7 +20,7 @@ interface Props {
   sweepRecords: SweepRecord[]
   sweepSummaries: SweepSummary[]
   pairwiseOffsets: PairwiseOffset[]
-  onSweep: (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number, configuration: SimulationConfig, onIntermediate?: (records: SweepRecord[], visuals: SweepVisualSnapshot[]) => void }) => Promise<{ records: SweepRecord[], summaries: SweepSummary[], pairwiseOffsets: PairwiseOffset[] }>
+  onSweep: (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number, intermediate: boolean, configuration: SimulationConfig, onIntermediate?: (records: SweepRecord[], visuals: SweepVisualSnapshot[]) => void }) => Promise<{ records: SweepRecord[], summaries: SweepSummary[], pairwiseOffsets: PairwiseOffset[] }>
   onCancelSweep: () => void
   onImport: (config: SimulationConfig) => void
   onSearchResolution: (value: number) => void
@@ -32,46 +32,73 @@ export function ResultsPanel(props: Props) {
   const [count, setCount] = useState(300)
   const [reviewOpen, setReviewOpen] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
+  const [saveStatusTone, setSaveStatusTone] = useState<'normal' | 'warning'>('normal')
   const [runActive, setRunActive] = useState(false)
+  const [stopping, setStopping] = useState(false)
   const [activeSweep, setActiveSweep] = useState({ rpm: props.config.rpm, rotations: 1, intermediate: true, total: count })
   const [resultSensors, setResultSensors] = useState<PlacedSensor[]>([])
   const [reviewConfig, setReviewConfig] = useState<SimulationConfig | null>(null)
   const sweepTrigger = useRef<HTMLButtonElement>(null)
+  const stopRequested = useRef(false)
   const selected = (): ('contour' | 'geometric')[] => [...(contour ? ['contour' as const] : []), ...(geometric ? ['geometric' as const] : [])]
   const closeReview = useCallback(() => { setReviewOpen(false); requestAnimationFrame(() => sweepTrigger.current?.focus()) }, [])
-  const openReview = () => { setSaveStatus(''); setReviewConfig(structuredClone(props.config)); setReviewOpen(true) }
+  const openReview = () => { setSaveStatus(''); setSaveStatusTone('normal'); setReviewConfig(structuredClone(props.config)); setReviewOpen(true) }
   const confirmSweep = async (directory: FileSystemDirectoryHandle | null, options: { rpm: number, rotations: number, intermediate: boolean }, folderName: string) => {
     setRunActive(true)
+    setStopping(false)
+    stopRequested.current = false
     setReviewOpen(false)
     const total = count * options.rotations
     setActiveSweep({ ...options, total })
     const runConfig = { ...(reviewConfig ?? props.config), rpm: options.rpm, playing: false }
     const checkpoints: SweepRecord[][] = []
-    const details: SweepOutputDetails = { pairwiseOffsets: [], run: { rpm: options.rpm, rotations: options.rotations, acquisitionsPerRotation: count, estimators: selected(), searchResolutionDeg: runConfig.searchResolutionDeg, initialAngleDeg: runConfig.angleDeg, saveIntermediate: options.intermediate } }
+    const estimators = selected()
+    const details: SweepOutputDetails = { pairwiseOffsets: [], run: { rpm: options.rpm, rotations: options.rotations, acquisitionsPerRotation: count, estimators, searchResolutionDeg: runConfig.searchResolutionDeg, initialAngleDeg: runConfig.angleDeg, saveIntermediate: options.intermediate } }
     let pendingWrites = Promise.resolve()
     let checkpointError = ''
     try {
       if (directory) await saveSweepFolder(directory, folderName, runConfig, [], [], details)
       setResultSensors(structuredClone(runConfig.sensors))
-      const result = await props.onSweep(total, selected(), { ...options, configuration: runConfig, onIntermediate: options.intermediate ? (records, visuals) => {
+      const result = await props.onSweep(total, estimators, { ...options, configuration: runConfig, onIntermediate: (records, visuals) => {
         checkpoints.push(records)
         const index = checkpoints.length
-        if (directory) pendingWrites = pendingWrites.then(() => saveSweepCheckpoint(directory, folderName, index, records, visuals, runConfig)).catch((error: Error) => { checkpointError = error.message })
-      } : undefined })
+        if (directory && options.intermediate) pendingWrites = pendingWrites.then(() => saveSweepCheckpoint(directory, folderName, index, records, visuals, runConfig)).catch((error: Error) => { checkpointError = error.message })
+      } })
       details.pairwiseOffsets = result.pairwiseOffsets
       await pendingWrites
       if (directory) {
         await saveSweepFolder(directory, folderName, runConfig, result.records, result.summaries, details)
+        setSaveStatusTone('normal')
         setSaveStatus(`Saved to ${directory.name}/${folderName}${checkpointError ? ` · checkpoint write failed: ${checkpointError}` : ''}`)
       } else {
         downloadSweepPackage(folderName, runConfig, result.records, result.summaries, { ...details, checkpoints })
+        setSaveStatusTone('normal')
         setSaveStatus(`Downloaded ${folderName}.json`)
       }
     } catch (error) {
       await pendingWrites
-      if (!directory && checkpoints.length) downloadSweepPackage(`${folderName}_partial`, runConfig, checkpoints.flat(), [], { ...details, checkpoints })
-      setSaveStatus(`Sweep stopped: ${error instanceof Error ? error.message : String(error)}. ${checkpoints.length ? 'Completed checkpoints were retained.' : 'No checkpoint was completed.'}${checkpointError ? ` Checkpoint error: ${checkpointError}` : ''}`)
-    } finally { setRunActive(false) }
+      const records = checkpoints.flat()
+      const completed = completedSweepAcquisitions(records)
+      if (stopRequested.current && hasRepresentativePartialSweep(records, total)) {
+        const partial = summariseSweepRecords(records, runConfig.sensors, estimators, options.rpm)
+        details.pairwiseOffsets = partial.pairwiseOffsets
+        if (directory) await saveSweepFolder(directory, folderName, runConfig, records, partial.summaries, details)
+        else downloadSweepPackage(`${folderName}_partial`, runConfig, records, partial.summaries, { ...details, checkpoints })
+        setSaveStatusTone('normal')
+        setSaveStatus(`Sweep stopped after ${(completed / count).toFixed(2)} of ${options.rotations} rotations. Partial results from ${completed} acquisitions are shown and ${directory ? `saved to ${directory.name}/${folderName}` : 'downloaded'}.${checkpointError ? ` Checkpoint error: ${checkpointError}` : ''}`)
+      } else if (stopRequested.current) {
+        setSaveStatusTone('warning')
+        setSaveStatus(`Sweep stopped before one-third of the requested rotations was completed (${completed} of ${total} acquisitions). There is not enough angular coverage to show a representative result; run the sweep again when ready.${checkpointError ? ` Checkpoint error: ${checkpointError}` : ''}`)
+      } else {
+        setSaveStatusTone('warning')
+        setSaveStatus(`Sweep could not finish: ${error instanceof Error ? error.message : String(error)}.${checkpointError ? ` Checkpoint error: ${checkpointError}` : ''}`)
+      }
+    } finally { setRunActive(false); setStopping(false) }
+  }
+  const stopSweep = () => {
+    stopRequested.current = true
+    setStopping(true)
+    props.onCancelSweep()
   }
   return (
     <Panel number={6} title="Estimation and results" className="results-panel">
@@ -94,18 +121,17 @@ export function ResultsPanel(props: Props) {
         <div className="subhead"><span>Sweep mode</span><small>Runs in a Web Worker without rendering frames</small></div>
         <p className="sweep-explanation">Repeats acquisitions across a full target revolution, then reports angle-error statistics, rejected frames, error plots and cross-sensor timing offsets.</p>
         <div className="sweep-controls"><NumberField label="Acquisitions" value={count} min={10} max={2000} integer onChange={setCount} /><button ref={sweepTrigger} disabled={props.busy || runActive || selected().length === 0} onClick={openReview}>Run sweep</button></div>
-        {props.sweepProgress > 0 && props.sweepProgress < 1 && <SweepProgress fraction={props.sweepProgress} total={activeSweep.total} rpm={activeSweep.rpm} rotations={activeSweep.rotations} detailed={activeSweep.intermediate} />}
-        {saveStatus && <p className="sweep-save-status" role="status">{saveStatus}</p>}
+        {props.sweepProgress > 0 && props.sweepProgress < 1 && <SweepProgress fraction={props.sweepProgress} total={activeSweep.total} rpm={activeSweep.rpm} rotations={activeSweep.rotations} detailed={activeSweep.intermediate} stopping={stopping} onStop={stopSweep} />}
+        {saveStatus && <p className={`sweep-save-status${saveStatusTone === 'warning' ? ' is-warning' : ''}`} role="status">{saveStatus}</p>}
         {props.sweepSummaries.length > 0 && <SweepResults summaries={props.sweepSummaries} offsets={props.pairwiseOffsets} records={props.sweepRecords} sensors={resultSensors.length ? resultSensors : props.sensors} />}
       </div>
-      {props.busy && props.sweepProgress > 0 && <button onClick={props.onCancelSweep}>Cancel sweep</button>}
       <ExportBar config={props.config} records={props.sweepRecords} onImport={props.onImport} />
       {reviewOpen && <SweepReviewDialog config={reviewConfig ?? props.config} acquisitions={count} estimators={selected()} onCancel={closeReview} onConfirm={confirmSweep} />}
     </Panel>
   )
 }
 
-function SweepProgress({ fraction, total, rpm, rotations, detailed }: { fraction: number, total: number, rpm: number, rotations: number, detailed: boolean }) {
+function SweepProgress({ fraction, total, rpm, rotations, detailed, stopping, onStop }: { fraction: number, total: number, rpm: number, rotations: number, detailed: boolean, stopping: boolean, onStop: () => void }) {
   const completed = Math.min(total, Math.floor(total * fraction))
   const percentage = Math.round(fraction * 100)
   return (
@@ -117,6 +143,7 @@ function SweepProgress({ fraction, total, rpm, rotations, detailed }: { fraction
       </svg>
       <div className="sweep-progress-copy"><strong>Running sweep</strong><span>{percentage}% · {completed} of {total} acquisitions{detailed ? ` · rotation ${(fraction * rotations).toFixed(2)} / ${rotations} · ${rpm.toFixed(1)} rpm` : ''}</span></div>
       <div className="progress"><span style={{ width: `${fraction * 100}%` }} /></div>
+      <button className="stop-sweep" type="button" disabled={stopping} onClick={onStop}>{stopping ? 'Stopping…' : 'Stop sweep'}</button>
     </div>
   )
 }

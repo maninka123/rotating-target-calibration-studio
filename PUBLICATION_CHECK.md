@@ -6,14 +6,14 @@ These checks were repeated before the current release commit on 7 September 2026
 | ---: | --- | --- | --- |
 | 1 | Repository root | `git rev-parse --show-toplevel`, compared with the current project directory | Pass — both resolve to `rotating-target-calibration-studio/` |
 | 2 | Status boundary | `git status --short --untracked-files=all` | Pass — every listed path is relative to this repository root |
-| 3 | Staged files | `git ls-files` after `git add -A` | Pass — 70 project files only, including this report and `CITATION.cff` |
+| 3 | Staged files | `git ls-files` after `git add -A` | Pass — 73 project files only, including the social-preview source, public image and regeneration script |
 | 4 | Parent absolute paths | Text scan for home/workspace paths in all project sources and documents | Pass — no matches |
 | 5 | External workspace references | Import/reference review | Pass — imports are repository-local or declared registry dependencies; no parent or sibling package, dataset, result, or module is referenced |
 | 6 | Escaping symlinks | `find` symlink scan, excluding dependencies and local tool caches | Pass — no symlinks are tracked |
 | 7 | Attribution and commit trailers | Case-insensitive prohibited-attribution scan; pre-commit log inspection | Pass — no prohibited reference or co-author trailer in tracked content or history |
 | 8 | Measurement data | Extension scan plus staged-content review | Pass — no bag, point-cloud, CSV, measurement, or copied workspace results file is tracked; numeric values are model parameters, specification constants or diagnostics produced by this application |
 | 9 | External publication material | Staged document and source review | Pass — the citation guidance states only that an associated publication is under review; it includes no unpublished title, abstract, manuscript text, results table, DOI or publication metadata |
-| 10 | Independent history and author | `git log` and repository-local identity inspection | Pass — all eighteen existing commits on main are authored by Pasindu Ranasinghe. Seventeen use the supplied UNSW email; the GitHub merge uses the same author's GitHub noreply address. The staged release uses the supplied UNSW email. No parent-workspace history is inherited. |
+| 10 | Independent history and author | `git log` and repository-local identity inspection | Pass — all nineteen existing commits on main are authored by Pasindu Ranasinghe. Eighteen use the supplied UNSW email; the GitHub merge uses the same author's GitHub noreply address. The staged release uses the supplied UNSW email. No parent-workspace history is inherited. |
 
 Additional checks:
 

@@ -24,6 +24,7 @@ Validation date: 7 September 2026. This report distinguishes automated checks, m
 | Sample-count acceptance boundaries | Exactly 50 samples and 3/class evaluated | Existing expectations preserved with non-collinear fixtures | Pass |
 | Intermediate checkpoints | Each acquisition saved once in ordered batches | Checkpoint sequence test covers all 20 acquisitions without duplicates | Pass |
 | Intermediate visual output | Detection/template PNG for every sensor at each checkpoint | Browser save test observes generated PNG files; images use the actual checkpoint frame and estimator outputs | Pass |
+| Stopped sweep results | Require one-third of requested angular coverage before partial reporting | Boundary test rejects 99/300 and accepts 100/300 completed acquisitions; browser test stops after 35% and renders the normal summary table and plots | Pass |
 | Sweep sensor identity | Human-readable name retained independently of current UI state | Record, summary, pairwise table, CSV and JSON tests preserve configured names | Pass |
 | Saved run contents | Acquisition CSV, summary, configuration, pair offsets, explicit run options | All five files verified with a test directory handle | Pass |
 | CSV escaping | Embedded quotes doubled | Quoted/comma field regression passes | Pass |
@@ -95,12 +96,12 @@ Informational band counts, dual-aperture target, default stand-offs and acquisit
 | --- | --- |
 | TypeScript strict typecheck | Pass |
 | ESLint | Pass |
-| Vitest | Pass — 169 tests in seven files |
+| Vitest | Pass — 170 tests in seven files |
 | Production build | Pass — renderer remains lazy; approximately 847 kB renderer chunk emits a size advisory |
-| Playwright | Pass — 7/7 tests, including the 60-second three-sensor run without console errors |
+| Playwright | Pass — 8/8 tests, including stopped-sweep partial results and the 60-second three-sensor run without console errors |
 | 3D coverage legend | Pass — live sensor names, matching coverage colours and removal of inactive entries |
 
-The browser suite includes exact worker-frame comparison, paused refresh, stale-result invalidation, valid/invalid geometry edits, focus retention during playback, zero-value entry, FOV warning fixes, named sweep tables, checkpoint PNG output, subpath loading and the existing 60-second three-sensor run. An initial parallel browser run timed out under shared rendering load; the final suite runs serially and passes in 1.5 minutes. The local run reused an explicitly started production preview because unopened loopback ports stalled readiness checks in this environment. CI retains automatic preview startup.
+The browser suite includes exact worker-frame comparison, paused refresh, stale-result invalidation, valid/invalid geometry edits, focus retention during playback, zero-value entry, FOV warning fixes, named sweep tables, checkpoint PNG output, stopped-sweep partial reporting, subpath loading and the existing 60-second three-sensor run. The suite runs serially to avoid shared rendering contention. CI starts an isolated production preview automatically.
 
 The first hosted CI run passed all unit/build checks and six of seven browser tests. Its dense-camera result assertion timed out at the implicit five-second limit. That asynchronous assertion now uses the same 30-second allowance as the other estimator-output assertion; the expected count and all numerical expectations are unchanged. Hosted rerun status is available in the repository's CI history.
 

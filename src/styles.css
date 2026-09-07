@@ -176,7 +176,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .sweep-controls { display: flex; gap: 8px; align-items: end; }
 .sweep-controls label { color: var(--muted); font-size: .72rem; }
 .sweep-controls input { width: 100px; margin-left: 5px; }
-.sweep-progress-status { display: grid; grid-template-columns: 34px minmax(170px, auto) 1fr; align-items: center; gap: 9px; margin: 10px 0; padding: 8px 10px; border: 1px solid #d5e0e1; background: #f6f9f9; }
+.sweep-progress-status { display: grid; grid-template-columns: 34px minmax(170px, auto) 1fr auto; align-items: center; gap: 9px; margin: 10px 0; padding: 8px 10px; border: 1px solid #d5e0e1; background: #f6f9f9; }
 .sweep-wheel { width: 32px; height: 32px; transition: transform .15s linear; }
 .sweep-wheel circle { fill: #dce8e9; stroke: var(--accent); stroke-width: 2.5; }
 .sweep-wheel .sweep-wheel-hub { fill: #c94b43; stroke: #8d3934; stroke-width: 1.5; }
@@ -186,7 +186,10 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid #5a9ba3; ou
 .sweep-progress-copy span { color: var(--muted); font-size: .68rem; font-variant-numeric: tabular-nums; }
 .progress { height: 7px; background: #dfe7e8; overflow: hidden; }
 .progress span { display: block; height: 100%; background: var(--accent); transition: width .15s; }
+.stop-sweep { justify-self: end; min-width: 92px; color: #8b3928; border-color: #caa69e; background: #fff; font-weight: 700; }
+.stop-sweep:hover:not(:disabled) { color: #fff; border-color: #8b3928; background: #8b3928; }
 .sweep-save-status { margin: 9px 0 0; padding: 7px 9px; color: #28694f; background: #edf7f3; border-left: 3px solid #4a8b70; font-size: .72rem; overflow-wrap: anywhere; }
+.sweep-save-status.is-warning { color: #7a442b; background: #fff7ed; border-left-color: #bb7a43; }
 .sweep-review { width: min(680px, 100%); max-height: min(820px, calc(100vh - 32px)); overflow-y: auto; padding: 1.35rem; color: #263033; background: #fff; border: .5px solid #aeb9bb; border-radius: 12px; box-shadow: 0 14px 42px rgba(16, 25, 28, .22); }
 .sweep-review > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .sweep-review h2 { margin: 3px 0 0; font-size: 1.15rem; }
@@ -252,6 +255,6 @@ footer { color: #687579; font-size: .7rem; text-align: center; padding: 20px 0 0
   .header-about { order: 2; }
   .header-play { order: 3; }
   .header-play { min-width: 88px; }
-  .sweep-progress-status { grid-template-columns: 34px 1fr; }
-  .sweep-progress-status .progress { grid-column: 1 / -1; }
+  .sweep-progress-status { grid-template-columns: 34px 1fr auto; }
+  .sweep-progress-status .progress { grid-column: 2 / -1; }
 }

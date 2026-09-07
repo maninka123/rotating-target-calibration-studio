@@ -150,7 +150,7 @@ Where the File System Access API is available, the application creates a timesta
 
 When intermediate saving is enabled, each checkpoint has its own subfolder. It contains acquisition CSV and one 960 × 600 PNG per sensor, drawn from the actual checkpoint acquisition with classified detections, dashed ground-truth boundaries, accepted recovered templates and angle-error labels. These images use display-decimated points only; the sweep estimates remain full-density.
 
-Browsers without folder access download one self-contained JSON data package. Checkpoint records remain in memory until completion or cancellation. Cancelling a sweep stops only its worker and preserves checkpoints already completed.
+Browsers without folder access download one self-contained JSON data package. Checkpoint records remain in memory until completion or cancellation. A Stop sweep control terminates only the batch worker. Once at least one-third of the requested rotations has completed, the saved checkpoint records are summarised through the same tables and plots as a completed run and written as partial output. An earlier stop reports that angular coverage is not yet representative and does not show partial statistics.
 
 For two or more sensors, pairwise offset is defined as the first sensor's observation/report lag minus the second sensor's lag. Recovered offset and expected lag are calculated from the same accepted acquisition pairs. Recovery assumes constant angular speed and is undefined at 0 RPM.
 

@@ -3,7 +3,7 @@ import { DUAL_APERTURE } from './core/presets'
 import { scenarioConfiguration, type ScenarioName } from './core/scenarios'
 import { parseConfiguration } from './core/config'
 import type { EstimateResult, PlacedSensor, SampleFrame, SimulationConfig, SweepRecord, TargetConfig } from './core/types'
-import type { PairwiseOffset, SweepSummary, SweepVisualSnapshot } from './core/sweep'
+import { summariseSweepRecords, type PairwiseOffset, type SweepSummary, type SweepVisualSnapshot } from './core/sweep'
 import { byId } from './sensors/library'
 import { ScenePanel } from './ui/scene/ScenePanel'
 import { ResultsPanel } from './ui/results/ResultsPanel'
@@ -132,13 +132,25 @@ export default function App() {
     } finally { setBusy(false) }
   }, [config, frames, worker])
 
-  const runSweepMode = useCallback(async (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number, configuration: SimulationConfig, onIntermediate?: (records: SweepRecord[], visuals: SweepVisualSnapshot[]) => void }) => {
+  const runSweepMode = useCallback(async (count: number, estimators: ('contour' | 'geometric')[], options: { rpm: number, rotations: number, intermediate: boolean, configuration: SimulationConfig, onIntermediate?: (records: SweepRecord[], visuals: SweepVisualSnapshot[]) => void }) => {
     setBusy(true)
     setSweepRecords([]); setSweepSummaries([]); setPairwiseOffsets([])
     setSweepProgress(0.001)
     try {
       const run = options.configuration
-      const reply = await sweepWorker.request({ type: 'sweep', sensors: run.sensors, target: run.target, rpm: options.rpm, angleDeg: run.angleDeg, rotations: options.rotations, acquisitions: count, estimators, searchResolutionDeg: run.searchResolutionDeg, includeVisuals: Boolean(options.onIntermediate) }, (fraction, checkpoint, visuals) => { setSweepProgress(fraction); if (checkpoint.length) options.onIntermediate?.(checkpoint, visuals) })
+      const partialRecords: SweepRecord[] = []
+      const reply = await sweepWorker.request({ type: 'sweep', sensors: run.sensors, target: run.target, rpm: options.rpm, angleDeg: run.angleDeg, rotations: options.rotations, acquisitions: count, estimators, searchResolutionDeg: run.searchResolutionDeg, includeVisuals: options.intermediate }, (fraction, checkpoint, visuals) => {
+        setSweepProgress(fraction)
+        if (!checkpoint.length) return
+        partialRecords.push(...checkpoint)
+        options.onIntermediate?.(checkpoint, visuals)
+        if (fraction >= 1 / 3) {
+          const partial = summariseSweepRecords(partialRecords, run.sensors, estimators, options.rpm)
+          setSweepRecords([...partialRecords])
+          setSweepSummaries(partial.summaries)
+          setPairwiseOffsets(partial.pairwiseOffsets)
+        }
+      })
       const records = reply.records as SweepRecord[]
       const summaries = reply.summaries as SweepSummary[]
       const offsets = reply.pairwiseOffsets as PairwiseOffset[]

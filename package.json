@@ -13,7 +13,8 @@
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint . --max-warnings 0",
     "test:e2e": "playwright test",
-    "capture:demo": "node scripts/capture-demo.mjs"
+    "capture:demo": "node scripts/capture-demo.mjs",
+    "generate:social-preview": "node scripts/generate-social-preview.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^8.18.0",

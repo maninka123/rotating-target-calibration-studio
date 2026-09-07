@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { scenarioConfiguration } from '../core/scenarios'
 import type { SweepRecord } from '../core/types'
-import type { SweepSummary } from '../core/sweep'
+import { completedSweepAcquisitions, hasRepresentativePartialSweep, summariseSweepRecords, type SweepSummary } from '../core/sweep'
 import { saveSweepCheckpoint, saveSweepFolder, sweepFolderName, sweepRecordsCsv, type SweepOutputDetails } from '../ui/results/sweepFiles'
 
 const details: SweepOutputDetails = { pairwiseOffsets: [{ fromSensor: 'sensor-1', fromSensorName: 'Sensor one', toSensor: 'sensor-2', toSensorName: 'Sensor two', estimator: 'geometric', recoveredOffsetMs: 50, recoveredOffsetSdMs: 1, expectedOffsetMs: 50 }], run: { rpm: 5, rotations: 2, acquisitionsPerRotation: 300, estimators: ['geometric'], searchResolutionDeg: 1, initialAngleDeg: 17, saveIntermediate: true } }
@@ -55,5 +55,15 @@ describe('sweep output package', () => {
 
   it('escapes quoted CSV fields using doubled quotes', () => {
     expect(sweepRecordsCsv([{ ...record, sensor: 'A "quoted", sensor' }])).toContain('"A ""quoted"", sensor"')
+  })
+
+  it('shows stopped-run results only after one-third of the requested acquisitions', () => {
+    const records = Array.from({ length: 100 }, (_, acquisition) => ({ ...record, acquisition }))
+    expect(completedSweepAcquisitions(records)).toBe(100)
+    expect(hasRepresentativePartialSweep(records.slice(0, 99), 300)).toBe(false)
+    expect(hasRepresentativePartialSweep(records, 300)).toBe(true)
+    const sensor = { ...scenarioConfiguration('Dense camera').sensors[0], instanceId: 'sensor-1', name: 'Sensor one' }
+    const partial = summariseSweepRecords(records, [sensor], ['geometric'], 5)
+    expect(partial.summaries[0]).toMatchObject({ acquisitions: 100, accepted: 100 })
   })
 })
