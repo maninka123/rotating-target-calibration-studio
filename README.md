@@ -99,12 +99,24 @@ MIT — see [LICENSE](LICENSE).
 
 ## Citation
 
-If you use **Rotating Target Calibration Studio** in academic research, publications, theses, or reports, please cite this repository.
+If you use **Rotating Target Calibration Studio** in academic research, publications, theses, or reports, please cite the associated preprint.
 
-- **Author:** Pasindu Ranasinghe
-- **Affiliation:** School of Minerals and Energy Resources Engineering, UNSW Sydney, Australia
-- **Year:** 2026
+### Associated preprint
 
-An associated research publication is currently **under review**. The citation information will be updated once the paper is published.
+Ranasinghe, P., Patra, D., Banerjee, B. P., & Raval, S. (2026).
+*A Rotating Aperture Target with a Common Geometric Estimator for Temporal Calibration of Heterogeneous Sensors*.
+SSRN preprint. [Read the preprint](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7513129).
+DOI: [10.2139/ssrn.7513129](https://doi.org/10.2139/ssrn.7513129).
 
-See [CITATION.cff](CITATION.cff) for the recommended software citation.
+```bibtex
+@misc{ranasinghe2026rotatingaperture,
+  author = {Ranasinghe, Pasindu and Patra, Dibyayan and Banerjee, Bikram Pratap and Raval, Simit},
+  title = {A Rotating Aperture Target with a Common Geometric Estimator for Temporal Calibration of Heterogeneous Sensors},
+  year = {2026},
+  doi = {10.2139/ssrn.7513129},
+  url = {https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7513129},
+  note = {SSRN preprint}
+}
+```
+
+See [CITATION.cff](CITATION.cff) for the preferred preprint citation used by GitHub's **Cite this repository** feature.
